@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""
+Network Monitor - Continuously measures latency, bandwidth, and reliability to storage nodes
+"""
+
+import asyncio
+import aiohttp
+import time
+import statistics
+import logging
+from typing import List, Dict, Optional
+from collections import defaultdict, deque
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class NetworkMonitor:
+    """
+    Monitors network performance to all storage nodes.
+    Tracks latency, bandwidth, and success rates using exponentially weighted moving averages.
+    """
+    
+    def __init__(self, ping_interval: float = 3.0, history_size: int = 10):
+        """
+        Initialize network monitor.
+        
+        Args:
+            ping_interval: Seconds between ping cycles (default: 3.0)
+            history_size: Number of recent measurements to keep (default: 10)
+        """
+        self.ping_interval = ping_interval
+        self.history_size = history_size
+        
+        # Store recent measurements for each node
+        self.latencies = defaultdict(lambda: deque(maxlen=history_size))
+        self.bandwidths = defaultdict(lambda: deque(maxlen=history_size))
+        self.success_rates = defaultdict(lambda: deque(maxlen=20))  # More samples for reliability
+        
+        # Track last update time for each node
+        self.last_update = defaultdict(float)
+        
+        # Monitoring state
+        self.monitoring = False
+        self.node_urls = []
+        self.monitor_task = None
+        
+    async def start_monitoring(self, node_urls: List[str]):
+        """
+        Start background network monitoring for given nodes.
+        
+        Args:
+            node_urls: List of storage node URLs to monitor
+        """
+        if self.monitoring:
+            logger.warning("Monitoring already started")
+            return
+            
+        self.node_urls = node_urls
+        self.monitoring = True
+        
+        logger.info(f"Starting network monitoring for {len(node_urls)} nodes")
+        
+        # Start background monitoring task
+        self.monitor_task = asyncio.create_task(self._monitoring_loop())
+        
+    async def stop_monitoring(self):
+        """Stop background network monitoring."""
+        if not self.monitoring:
+            return
+            
+        self.monitoring = False
+        
+        if self.monitor_task:
+            self.monitor_task.cancel()
+            try:
+                await self.monitor_task
+            except asyncio.CancelledError:
+                pass
+                
+        logger.info("Network monitoring stopped")
+        
+    async def _monitoring_loop(self):
+        """Background task that pings nodes every ping_interval seconds."""
+        while self.monitoring:
+            try:
+                # Ping all nodes in parallel
+                tasks = [self._ping_node(node_url) for node_url in self.node_urls]
+                await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Wait for next cycle
+                await asyncio.sleep(self.ping_interval)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                await asyncio.sleep(self.ping_interval)
+                
+    async def _ping_node(self, node_url: str):
+        """
+        Measure latency to a single node using HEAD /ping endpoint.
+        
+        Args:
+            node_url: URL of the storage node
+        """
+        start_time = time.time()
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=5.0)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.head(f"{node_url}/ping") as response:
+                    # Calculate latency in milliseconds
+                    latency = (time.time() - start_time) * 1000
+                    
+                    # Record successful ping
+                    self.latencies[node_url].append(latency)
+                    self.success_rates[node_url].append(1.0)
+                    self.last_update[node_url] = time.time()
+                    
+                    # Extract bandwidth info from headers if available
+                    # For now, we'll estimate bandwidth based on successful responses
+                    # In a real implementation, this would be measured during chunk downloads
+                    if not self.bandwidths[node_url]:
+                        # Initialize with a default estimate
+                        self.bandwidths[node_url].append(50.0)  # 50 Mbps default
+                    
+                    logger.debug(f"Ping {node_url}: {latency:.2f}ms")
+                    
+        except asyncio.TimeoutError:
+            self.success_rates[node_url].append(0.0)
+            logger.debug(f"Ping timeout for {node_url}")
+            
+        except Exception as e:
+            self.success_rates[node_url].append(0.0)
+            logger.debug(f"Ping failed for {node_url}: {e}")
+            
+    def update_bandwidth(self, node_url: str, bandwidth_mbps: float):
+        """
+        Update bandwidth measurement for a node.
+        This is called after actual chunk downloads to record real bandwidth.
+        
+        Args:
+            node_url: URL of the storage node
+            bandwidth_mbps: Measured bandwidth in Mbps
+        """
+        self.bandwidths[node_url].append(bandwidth_mbps)
+        logger.debug(f"Updated bandwidth for {node_url}: {bandwidth_mbps:.2f} Mbps")
+        
+    def get_node_score(self, node_url: str) -> float:
+        """
+        Calculate node performance score using the exact formula from requirements:
+        Formula: (bandwidth × reliability) / (1 + latency × 0.1)
+        
+        Args:
+            node_url: URL of the storage node
+            
+        Returns:
+            Performance score (higher is better)
+        """
+        # Check if we have any measurements
+        if not self.latencies[node_url]:
+            return 0.0
+            
+        # Calculate average latency (ms)
+        avg_latency = statistics.mean(self.latencies[node_url])
+        
+        # Calculate average bandwidth (Mbps)
+        if self.bandwidths[node_url]:
+            avg_bandwidth = statistics.mean(self.bandwidths[node_url])
+        else:
+            avg_bandwidth = 50.0  # Default estimate
+            
+        # Calculate success rate (reliability)
+        if self.success_rates[node_url]:
+            success_rate = statistics.mean(self.success_rates[node_url])
+        else:
+            success_rate = 0.0
+            
+        # Apply exact scoring formula from requirements
+        score = (avg_bandwidth * success_rate) / (1 + avg_latency * 0.1)
+        
+        return score
+        
+    def get_all_node_scores(self) -> Dict[str, float]:
+        """
+        Get performance scores for all monitored nodes.
+        
+        Returns:
+            Dictionary mapping node URLs to their scores
+        """
+        return {node_url: self.get_node_score(node_url) for node_url in self.node_urls}
+        
+    def get_node_stats(self, node_url: str) -> Optional[Dict]:
+        """
+        Get detailed statistics for a specific node.
+        
+        Args:
+            node_url: URL of the storage node
+            
+        Returns:
+            Dictionary with node statistics or None if no data
+        """
+        if not self.latencies[node_url]:
+            return None
+            
+        stats = {
+            'node_url': node_url,
+            'latency_ms': {
+                'current': self.latencies[node_url][-1] if self.latencies[node_url] else None,
+                'average': statistics.mean(self.latencies[node_url]) if self.latencies[node_url] else None,
+                'min': min(self.latencies[node_url]) if self.latencies[node_url] else None,
+                'max': max(self.latencies[node_url]) if self.latencies[node_url] else None,
+            },
+            'bandwidth_mbps': {
+                'current': self.bandwidths[node_url][-1] if self.bandwidths[node_url] else None,
+                'average': statistics.mean(self.bandwidths[node_url]) if self.bandwidths[node_url] else None,
+            },
+            'success_rate': statistics.mean(self.success_rates[node_url]) if self.success_rates[node_url] else 0.0,
+            'score': self.get_node_score(node_url),
+            'last_update': self.last_update.get(node_url, 0),
+            'measurements_count': len(self.latencies[node_url])
+        }
+        
+        return stats
+        
+    def get_all_stats(self) -> List[Dict]:
+        """
+        Get detailed statistics for all monitored nodes.
+        
+        Returns:
+            List of dictionaries with node statistics
+        """
+        return [self.get_node_stats(node_url) for node_url in self.node_urls 
+                if self.get_node_stats(node_url) is not None]
+        
+    def is_node_healthy(self, node_url: str, timeout_sec: float = 30.0) -> bool:
+        """
+        Check if a node is considered healthy based on recent measurements.
+        
+        Args:
+            node_url: URL of the storage node
+            timeout_sec: Seconds since last successful ping to consider node down
+            
+        Returns:
+            True if node is healthy, False otherwise
+        """
+        # Check if we have recent data
+        last_seen = self.last_update.get(node_url, 0)
+        if time.time() - last_seen > timeout_sec:
+            return False
+            
+        # Check success rate
+        if self.success_rates[node_url]:
+            recent_success_rate = statistics.mean(list(self.success_rates[node_url])[-5:])
+            return recent_success_rate > 0.5  # At least 50% success rate
+            
+        return False
+        
+    def get_healthy_nodes(self) -> List[str]:
+        """
+        Get list of currently healthy nodes.
+        
+        Returns:
+            List of node URLs that are considered healthy
+        """
+        return [node_url for node_url in self.node_urls if self.is_node_healthy(node_url)]

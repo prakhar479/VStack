@@ -1,0 +1,6 @@
+aiohttp==3.9.1
+numpy==2.3.4
+opencv-python==4.8.1.78
+aiohttp-cors==0.7.0
+pytest==7.4.3
+pytest-asyncio==0.21.1

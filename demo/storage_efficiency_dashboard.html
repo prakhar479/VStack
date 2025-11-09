@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V-Stack Storage Efficiency Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .metric:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        .metric-value {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #333;
+        }
+        
+        .metric-value.success {
+            color: #10b981;
+        }
+        
+        .metric-value.warning {
+            color: #f59e0b;
+        }
+        
+        .metric-value.info {
+            color: #3b82f6;
+        }
+        
+        .savings-highlight {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .savings-highlight h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .savings-highlight .big-number {
+            font-size: 4em;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        
+        .comparison-chart {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+        
+        .comparison-chart h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .bar-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .bar-label {
+            width: 150px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .bar-container {
+            flex: 1;
+            height: 40px;
+            background: #f3f4f6;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .bar-fill {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: white;
+            font-weight: bold;
+            transition: width 1s ease;
+        }
+        
+        .bar-fill.replication {
+            background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+        }
+        
+        .bar-fill.erasure {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+        
+        .bar-fill.adaptive {
+            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+        }
+        
+        .mode-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .mode-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+        
+        .mode-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .mode-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .mode-stats {
+            text-align: left;
+            margin-top: 20px;
+        }
+        
+        .mode-stat {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .mode-stat:last-child {
+            border-bottom: none;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 30px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 V-Stack Storage Efficiency Dashboard</h1>
+            <p>Adaptive Redundancy: Smart Storage for Video Content</p>
+        </div>
+        
+        <div class="savings-highlight">
+            <h2>Total Storage Savings</h2>
+            <div class="big-number">42.2%</div>
+            <p>Compared to full replication baseline</p>
+            <p style="margin-top: 10px; font-size: 1.2em;">Saving 126.5 GB out of 300 GB</p>
+        </div>
+        
+        <div class="dashboard">
+            <div class="card">
+                <h2>📊 Video Distribution</h2>
+                <div class="metric">
+                    <span class="metric-label">Total Videos</span>
+                    <span class="metric-value info">1,000</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Hot Videos (Replication)</span>
+                    <span class="metric-value warning">50 (5%)</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cold Videos (Erasure Coding)</span>
+                    <span class="metric-value success">950 (95%)</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Chunks</span>
+                    <span class="metric-value">50,000</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💾 Storage Usage</h2>
+                <div class="metric">
+                    <span class="metric-label">Baseline (Full Replication)</span>
+                    <span class="metric-value warning">300 GB</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Hot Video Storage</span>
+                    <span class="metric-value">15 GB</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cold Video Storage</span>
+                    <span class="metric-value">158.5 GB</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Used</span>
+                    <span class="metric-value success">173.5 GB</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>⚡ Performance Metrics</h2>
+                <div class="metric">
+                    <span class="metric-label">Encoding Throughput</span>
+                    <span class="metric-value">0.59 MB/s</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Decoding Throughput</span>
+                    <span class="metric-value success">10,454 MB/s</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Fault Tolerance</span>
+                    <span class="metric-value info">2 nodes</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Storage Efficiency</span>
+                    <span class="metric-value success">44.4%</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="comparison-chart">
+            <h2>📈 Storage Comparison (for 100 GB logical data)</h2>
+            <div class="bar-chart">
+                <div class="bar-item">
+                    <div class="bar-label">Full Replication</div>
+                    <div class="bar-container">
+                        <div class="bar-fill replication" style="width: 100%;">300 GB</div>
+                    </div>
+                </div>
+                <div class="bar-item">
+                    <div class="bar-label">Erasure Coding Only</div>
+                    <div class="bar-container">
+                        <div class="bar-fill erasure" style="width: 55.7%;">167 GB</div>
+                    </div>
+                </div>
+                <div class="bar-item">
+                    <div class="bar-label">Adaptive (5% hot)</div>
+                    <div class="bar-container">
+                        <div class="bar-fill adaptive" style="width: 57.8%;">173.5 GB</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mode-comparison">
+            <div class="mode-card">
+                <div class="mode-icon">🔥</div>
+                <h3>Replication Mode</h3>
+                <p style="color: #666; margin-bottom: 15px;">For hot videos (>1000 views)</p>
+                <div class="mode-stats">
+                    <div class="mode-stat">
+                        <strong>Storage:</strong> 6 MB per 2MB chunk
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Copies:</strong> 3 full replicas
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Read Speed:</strong> Fast (direct)
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Failures:</strong> Tolerate 2 nodes
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mode-card">
+                <div class="mode-icon">❄️</div>
+                <h3>Erasure Coding Mode</h3>
+                <p style="color: #666; margin-bottom: 15px;">For cold videos (≤1000 views)</p>
+                <div class="mode-stats">
+                    <div class="mode-stat">
+                        <strong>Storage:</strong> 3.33 MB per 2MB chunk
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Fragments:</strong> 5 total, need 3
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Read Speed:</strong> Moderate (decode)
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Failures:</strong> Tolerate 2 nodes
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mode-card">
+                <div class="mode-icon">🎯</div>
+                <h3>Adaptive Selection</h3>
+                <p style="color: #666; margin-bottom: 15px;">Best of both worlds</p>
+                <div class="mode-stats">
+                    <div class="mode-stat">
+                        <strong>Savings:</strong> 42.2% storage
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Hot Videos:</strong> Fast reads
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Cold Videos:</strong> Efficient storage
+                    </div>
+                    <div class="mode-stat">
+                        <strong>Automatic:</strong> No manual config
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>V-Stack Distributed Video Storage System</p>
+            <p>Adaptive Redundancy: Third Core Novelty</p>
+        </div>
+    </div>
+    
+    <script>
+        // Animate bars on load
+        window.addEventListener('load', () => {
+            const bars = document.querySelectorAll('.bar-fill');
+            bars.forEach(bar => {
+                const width = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = width;
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>
