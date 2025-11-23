@@ -1,0 +1,103 @@
+# V-Stack .gitignore
+
+.kiro/
+benchmark_results.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+metadata-service/venv/
+uploader/venv/
+client/venv/
+
+# Go
+storage-node/storage-node
+storage-node/storage-node.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Data directories
+storage-node/data/
+metadata-service/data/
+client/cache/
+uploader/temp/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+temp/
+
+# Video files (for testing)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

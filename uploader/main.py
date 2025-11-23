@@ -55,10 +55,31 @@ async def startup_event():
     # Create temp directory
     os.makedirs(temp_dir, exist_ok=True)
     
+    # Verify FFmpeg is available
+    try:
+        import subprocess
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            logger.info("FFmpeg is available")
+        else:
+            logger.error("FFmpeg check failed")
+    except Exception as e:
+        logger.error(f"FFmpeg not found or not working: {e}")
+        logger.warning("Video processing may fail without FFmpeg")
+    
     video_processor = VideoProcessor(temp_dir)
     upload_coordinator = UploadCoordinator(metadata_service_url)
     
     logger.info(f"Uploader Service initialized with metadata service at {metadata_service_url}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    global upload_coordinator
+    
+    if upload_coordinator:
+        await upload_coordinator.close()
+        logger.info("Upload coordinator closed")
 
 @app.get("/health")
 async def health_check():

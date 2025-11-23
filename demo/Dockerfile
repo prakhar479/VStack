@@ -1,11 +1,18 @@
-FROM nginx:alpine
+FROM python:3.11-slim
 
-# Copy demo files to nginx html directory
-COPY demo/ /usr/share/nginx/html/
+WORKDIR /app
 
-# Copy custom nginx configuration if needed
-# COPY demo/nginx.conf /etc/nginx/nginx.conf
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-EXPOSE 80
+# Install Python dependencies
+RUN pip install --no-cache-dir aiohttp aiofiles
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy demo files
+COPY demo/ .
+
+EXPOSE 8085
+
+CMD ["python", "server.py"]

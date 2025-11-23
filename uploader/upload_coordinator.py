@@ -247,7 +247,9 @@ class UploadCoordinator:
                     "checksum": chunk.checksum,
                     "size_bytes": chunk.size_bytes,
                     "video_id": chunk.video_id,
-                    "sequence_num": chunk.sequence_num
+                    "sequence_num": chunk.sequence_num,
+                    "redundancy_mode": "replication",  # Default to replication mode
+                    "fragments_metadata": None  # No fragments for replication mode
                 }
             )
             response.raise_for_status()

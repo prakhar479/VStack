@@ -23,6 +23,6 @@ COPY uploader/ .
 # Create temp directory for video processing
 RUN mkdir -p /tmp/uploads
 
-EXPOSE 8082
+EXPOSE 8084
 
 CMD ["python", "main.py"]

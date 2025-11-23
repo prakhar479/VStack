@@ -125,21 +125,138 @@
     </div>
 
     <script>
-        // Demo JavaScript - will be implemented in later tasks
+        let currentVideoId = null;
+        let updateInterval = null;
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSystemHealth();
+            loadVideos();
+            setupUploadHandler();
+            
+            // Start periodic updates
+            updateInterval = setInterval(updateDashboard, 3000);
+        });
+
+        function setupUploadHandler() {
+            const uploadInput = document.getElementById('videoUpload');
+            uploadInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const title = prompt('Enter video title:', file.name);
+                if (!title) return;
+                
+                await uploadVideo(file, title);
+            });
+        }
+
+        async function uploadVideo(file, title) {
+            const formData = new FormData();
+            formData.append('video', file);
+            formData.append('title', title);
+            
+            document.getElementById('uploadProgress').style.display = 'block';
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Upload started! Video ID: ${result.video_id}`);
+                    currentVideoId = result.video_id;
+                    document.getElementById('uploadProgress').style.display = 'none';
+                    loadVideos();
+                } else {
+                    alert(`Upload failed: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert(`Upload error: ${error.message}`);
+            }
+        }
+
+        async function loadSystemHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const health = await response.json();
+                
+                updateNodeStatus(health.storage_nodes || []);
+            } catch (error) {
+                console.error('Error loading health:', error);
+            }
+        }
+
+        async function loadVideos() {
+            try {
+                const response = await fetch('/api/videos');
+                const videos = await response.json();
+                
+                console.log('Available videos:', videos);
+            } catch (error) {
+                console.error('Error loading videos:', error);
+            }
+        }
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                // Update metrics
+                document.getElementById('bufferLevel').textContent = '0s';
+                document.getElementById('throughput').textContent = '0 Mbps';
+                document.getElementById('startupLatency').textContent = '0ms';
+                
+                // Update node status
+                await loadSystemHealth();
+            } catch (error) {
+                console.error('Error updating dashboard:', error);
+            }
+        }
+
+        function updateNodeStatus(nodes) {
+            const container = document.getElementById('nodeStatus');
+            container.innerHTML = '';
+            
+            nodes.forEach((node, index) => {
+                const statusClass = node.status === 'healthy' ? 'status-healthy' : 
+                                  node.status === 'degraded' ? 'status-degraded' : 
+                                  'status-down';
+                
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = `node-status ${statusClass}`;
+                nodeDiv.innerHTML = `
+                    <span>Storage Node ${index + 1} (${node.node_id || 'unknown'})</span>
+                    <span>${node.status || 'unknown'} - Chunks: ${node.chunk_count || 0}</span>
+                `;
+                container.appendChild(nodeDiv);
+            });
+        }
+
         function startDemo() {
-            console.log('Demo playback starting...');
-            // Implementation will be added in task 7
+            if (!currentVideoId) {
+                alert('Please upload a video first!');
+                return;
+            }
+            
+            alert(`Demo playback would start for video: ${currentVideoId}\n\nTo actually play the video, use:\npython client/main.py ${currentVideoId}`);
         }
 
         function simulateNetworkIssues() {
-            console.log('Simulating network issues...');
-            // Implementation will be added in task 7
+            alert('Network simulation is available through the network_emulator.py script.\n\nRun: python demo/network_emulator.py');
         }
 
-        // Placeholder for real-time updates
-        setInterval(() => {
-            // Update dashboard metrics - implementation in task 7
-        }, 1000);
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        });
     </script>
 </body>
 </html>

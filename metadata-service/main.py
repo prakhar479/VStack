@@ -156,6 +156,7 @@ def _translate_internal_to_external_urls(replicas: List[str]) -> List[str]:
     external_replicas = []
     for url in replicas:
         # Map internal Docker network names to external localhost ports
+        # Note: All storage nodes use port 8081 internally, but are exposed on different external ports
         if 'storage-node-1:8081' in url:
             external_replicas.append(url.replace('storage-node-1:8081', 'localhost:8081'))
         elif 'storage-node-2:8081' in url:
@@ -175,9 +176,17 @@ async def get_video_manifest(video_id: str):
     if not manifest:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Translate internal Docker network URLs to external URLs for clients
-    for chunk in manifest.get('chunks', []):
-        chunk['replicas'] = _translate_internal_to_external_urls(chunk['replicas'])
+    try:
+        # Translate internal Docker network URLs to external URLs for clients
+        for chunk in manifest.get('chunks', []):
+            if chunk.get('replicas'):
+                chunk['replicas'] = _translate_internal_to_external_urls(chunk['replicas'])
+            else:
+                logger.warning(f"Chunk {chunk.get('chunk_id')} has no replicas")
+                chunk['replicas'] = []
+    except Exception as e:
+        logger.error(f"Error translating URLs in manifest: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process manifest")
     
     return VideoManifest(**manifest)
 

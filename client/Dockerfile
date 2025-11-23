@@ -23,6 +23,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY client/ .
 
-EXPOSE 8083
+EXPOSE 8086
 
 CMD ["python", "server.py"]
