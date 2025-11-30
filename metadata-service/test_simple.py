@@ -4,6 +4,7 @@ Simple integration tests for V-Stack Metadata Service
 """
 
 import asyncio
+import pytest
 import tempfile
 import os
 import json
@@ -15,6 +16,7 @@ from consensus import ChunkPaxos
 from health_monitor import HealthMonitor
 from models import ConsensusPhase
 
+@pytest.mark.asyncio
 async def test_database_operations():
     """Test basic database operations"""
     print("Testing database operations...")
@@ -50,6 +52,7 @@ async def test_database_operations():
     finally:
         os.unlink(db_path)
 
+@pytest.mark.asyncio
 async def test_consensus_state_management():
     """Test consensus protocol state management"""
     print("Testing consensus state management...")
@@ -86,6 +89,7 @@ async def test_consensus_state_management():
     finally:
         os.unlink(db_path)
 
+@pytest.mark.asyncio
 async def test_health_monitoring():
     """Test health monitoring functionality"""
     print("Testing health monitoring...")
@@ -121,6 +125,7 @@ async def test_health_monitoring():
     finally:
         os.unlink(db_path)
 
+@pytest.mark.asyncio
 async def test_video_manifest():
     """Test video manifest generation"""
     print("Testing video manifest generation...")
@@ -171,6 +176,7 @@ async def test_video_manifest():
     finally:
         os.unlink(db_path)
 
+@pytest.mark.asyncio
 async def test_node_failure_simulation():
     """Test node failure detection"""
     print("Testing node failure simulation...")

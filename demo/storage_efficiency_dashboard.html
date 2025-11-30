@@ -1,286 +1,400 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V-Stack Storage Efficiency Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color: #0a0a0f;
+            --card-bg: #13131f;
+            --accent-primary: #6c5ce7;
+            --accent-secondary: #a29bfe;
+            --text-primary: #ffffff;
+            --text-secondary: #b2bec3;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #ff7675;
+            --info: #0984e3;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
         }
-        
+
         .container {
+            width: 100%;
             max-width: 1200px;
-            margin: 0 auto;
         }
-        
-        .header {
+
+        header {
             text-align: center;
-            color: white;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
         }
-        
-        .header h1 {
-            font-size: 2.5em;
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             margin-bottom: 10px;
+            letter-spacing: -1px;
         }
-        
-        .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-weight: 300;
         }
-        
+
+        nav {
+            margin-top: 20px;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            margin: 0 15px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: var(--transition);
+            padding-bottom: 5px;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text-primary);
+            border-bottom-color: var(--accent-primary);
+        }
+
         .dashboard {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
+            gap: 30px;
             margin-bottom: 30px;
         }
-        
+
         .card {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: var(--transition);
+            animation: fadeInUp 0.8s ease-out;
+            animation-fill-mode: both;
         }
-        
-        .card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.3em;
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(108, 92, 231, 0.1);
+            border-color: rgba(108, 92, 231, 0.3);
         }
-        
+
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            font-weight: 500;
+            color: var(--accent-secondary);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
         .metric {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        
+
         .metric:last-child {
             border-bottom: none;
         }
-        
+
         .metric-label {
-            color: #666;
+            color: var(--text-secondary);
             font-size: 0.95em;
         }
-        
+
         .metric-value {
-            font-weight: bold;
+            font-weight: 600;
             font-size: 1.1em;
-            color: #333;
+            color: var(--text-primary);
         }
-        
+
         .metric-value.success {
-            color: #10b981;
+            color: var(--success);
         }
-        
+
         .metric-value.warning {
-            color: #f59e0b;
+            color: var(--warning);
         }
-        
+
         .metric-value.info {
-            color: #3b82f6;
+            color: var(--info);
         }
-        
+
         .savings-highlight {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(135deg, rgba(0, 184, 148, 0.2), rgba(108, 92, 231, 0.2));
+            border: 1px solid rgba(0, 184, 148, 0.3);
             color: white;
-            padding: 30px;
-            border-radius: 10px;
+            padding: 40px;
+            border-radius: var(--border-radius);
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            animation: fadeInDown 0.8s ease-out 0.2s;
+            animation-fill-mode: both;
         }
-        
+
         .savings-highlight h2 {
             font-size: 2em;
             margin-bottom: 10px;
+            border: none;
+            color: var(--success);
         }
-        
+
         .savings-highlight .big-number {
-            font-size: 4em;
-            font-weight: bold;
+            font-size: 5em;
+            font-weight: 700;
             margin: 20px 0;
+            background: linear-gradient(135deg, var(--success), var(--accent-primary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 10px 30px rgba(0, 184, 148, 0.3);
         }
-        
+
         .comparison-chart {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
             margin-bottom: 30px;
         }
-        
-        .comparison-chart h2 {
-            color: #667eea;
-            margin-bottom: 20px;
-        }
-        
+
         .bar-chart {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 25px;
         }
-        
+
         .bar-item {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 20px;
         }
-        
+
         .bar-label {
-            width: 150px;
+            width: 180px;
             font-weight: 500;
-            color: #333;
+            color: var(--text-secondary);
         }
-        
+
         .bar-container {
             flex: 1;
             height: 40px;
-            background: #f3f4f6;
-            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
             overflow: hidden;
             position: relative;
         }
-        
+
         .bar-fill {
             height: 100%;
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            padding-right: 10px;
+            padding-right: 15px;
             color: white;
             font-weight: bold;
             transition: width 1s ease;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
         }
-        
+
         .bar-fill.replication {
-            background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+            background: linear-gradient(90deg, var(--danger), #e17055);
         }
-        
+
         .bar-fill.erasure {
-            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(90deg, var(--success), #00cec9);
         }
-        
+
         .bar-fill.adaptive {
-            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+            background: linear-gradient(90deg, var(--info), var(--accent-primary));
         }
-        
+
         .mode-comparison {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+            gap: 30px;
             margin-bottom: 30px;
         }
-        
+
         .mode-card {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
             text-align: center;
+            transition: var(--transition);
         }
-        
+
+        .mode-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-primary);
+        }
+
         .mode-card h3 {
-            color: #667eea;
+            color: var(--accent-secondary);
             margin-bottom: 15px;
-            font-size: 1.2em;
+            font-size: 1.3em;
         }
-        
+
         .mode-icon {
-            font-size: 3em;
-            margin-bottom: 15px;
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            display: inline-block;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2));
         }
-        
+
         .mode-stats {
             text-align: left;
-            margin-top: 20px;
+            margin-top: 25px;
         }
-        
+
         .mode-stat {
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
         }
-        
+
+        .mode-stat strong {
+            color: var(--text-primary);
+            margin-right: 5px;
+        }
+
         .mode-stat:last-child {
             border-bottom: none;
         }
-        
+
         .footer {
             text-align: center;
-            color: white;
-            margin-top: 30px;
+            color: var(--text-secondary);
+            margin-top: 50px;
             opacity: 0.8;
+            font-size: 0.9em;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🎬 V-Stack Storage Efficiency Dashboard</h1>
-            <p>Adaptive Redundancy: Smart Storage for Video Content</p>
-        </div>
-        
+        <header>
+            <h1>V-Stack</h1>
+            <p class="subtitle">Storage Efficiency Dashboard</p>
+            <nav>
+                <a href="/" class="nav-link">Home</a>
+                <a href="/consensus" class="nav-link">Consensus</a>
+                <a href="/storage-efficiency" class="nav-link active">Storage Efficiency</a>
+                <a href="/client/" class="nav-link">Smart Client</a>
+            </nav>
+        </header>
+
         <div class="savings-highlight">
             <h2>Total Storage Savings</h2>
-            <div class="big-number">42.2%</div>
+            <div class="big-number" id="total-savings-percent">0%</div>
             <p>Compared to full replication baseline</p>
-            <p style="margin-top: 10px; font-size: 1.2em;">Saving 126.5 GB out of 300 GB</p>
+            <p style="margin-top: 10px; font-size: 1.2em;" id="total-savings-text">Calculating...</p>
         </div>
-        
+
         <div class="dashboard">
             <div class="card">
                 <h2>📊 Video Distribution</h2>
                 <div class="metric">
                     <span class="metric-label">Total Videos</span>
-                    <span class="metric-value info">1,000</span>
+                    <span class="metric-value info" id="total-videos">0</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Hot Videos (Replication)</span>
-                    <span class="metric-value warning">50 (5%)</span>
+                    <span class="metric-value warning" id="hot-videos">0 (0%)</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Cold Videos (Erasure Coding)</span>
-                    <span class="metric-value success">950 (95%)</span>
+                    <span class="metric-value success" id="cold-videos">0 (0%)</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Total Chunks</span>
-                    <span class="metric-value">50,000</span>
+                    <span class="metric-value" id="total-chunks">0</span>
                 </div>
             </div>
-            
+
             <div class="card">
                 <h2>💾 Storage Usage</h2>
                 <div class="metric">
                     <span class="metric-label">Baseline (Full Replication)</span>
-                    <span class="metric-value warning">300 GB</span>
+                    <span class="metric-value warning" id="baseline-storage">0 GB</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Hot Video Storage</span>
-                    <span class="metric-value">15 GB</span>
+                    <span class="metric-value" id="hot-storage">0 GB</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Cold Video Storage</span>
-                    <span class="metric-value">158.5 GB</span>
+                    <span class="metric-value" id="cold-storage">0 GB</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Total Used</span>
-                    <span class="metric-value success">173.5 GB</span>
+                    <span class="metric-value success" id="total-used">0 GB</span>
                 </div>
             </div>
-            
+
             <div class="card">
                 <h2>⚡ Performance Metrics</h2>
                 <div class="metric">
@@ -297,40 +411,40 @@
                 </div>
                 <div class="metric">
                     <span class="metric-label">Storage Efficiency</span>
-                    <span class="metric-value success">44.4%</span>
+                    <span class="metric-value success" id="storage-efficiency">0%</span>
                 </div>
             </div>
         </div>
-        
+
         <div class="comparison-chart">
-            <h2>📈 Storage Comparison (for 100 GB logical data)</h2>
+            <h2>📈 Storage Comparison (Normalized)</h2>
             <div class="bar-chart">
                 <div class="bar-item">
                     <div class="bar-label">Full Replication</div>
                     <div class="bar-container">
-                        <div class="bar-fill replication" style="width: 100%;">300 GB</div>
+                        <div class="bar-fill replication" style="width: 100%;" id="bar-replication">100%</div>
                     </div>
                 </div>
                 <div class="bar-item">
                     <div class="bar-label">Erasure Coding Only</div>
                     <div class="bar-container">
-                        <div class="bar-fill erasure" style="width: 55.7%;">167 GB</div>
+                        <div class="bar-fill erasure" style="width: 55.7%;" id="bar-erasure">55.7%</div>
                     </div>
                 </div>
                 <div class="bar-item">
-                    <div class="bar-label">Adaptive (5% hot)</div>
+                    <div class="bar-label">Adaptive (Current)</div>
                     <div class="bar-container">
-                        <div class="bar-fill adaptive" style="width: 57.8%;">173.5 GB</div>
+                        <div class="bar-fill adaptive" style="width: 0%;" id="bar-adaptive">Calculating...</div>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <div class="mode-comparison">
             <div class="mode-card">
                 <div class="mode-icon">🔥</div>
                 <h3>Replication Mode</h3>
-                <p style="color: #666; margin-bottom: 15px;">For hot videos (>1000 views)</p>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">For hot videos (>1000 views)</p>
                 <div class="mode-stats">
                     <div class="mode-stat">
                         <strong>Storage:</strong> 6 MB per 2MB chunk
@@ -346,11 +460,11 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="mode-card">
                 <div class="mode-icon">❄️</div>
                 <h3>Erasure Coding Mode</h3>
-                <p style="color: #666; margin-bottom: 15px;">For cold videos (≤1000 views)</p>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">For cold videos (≤1000 views)</p>
                 <div class="mode-stats">
                     <div class="mode-stat">
                         <strong>Storage:</strong> 3.33 MB per 2MB chunk
@@ -366,14 +480,14 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="mode-card">
                 <div class="mode-icon">🎯</div>
                 <h3>Adaptive Selection</h3>
-                <p style="color: #666; margin-bottom: 15px;">Best of both worlds</p>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">Best of both worlds</p>
                 <div class="mode-stats">
                     <div class="mode-stat">
-                        <strong>Savings:</strong> 42.2% storage
+                        <strong>Savings:</strong> ~42% storage
                     </div>
                     <div class="mode-stat">
                         <strong>Hot Videos:</strong> Fast reads
@@ -387,25 +501,105 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="footer">
             <p>V-Stack Distributed Video Storage System</p>
             <p>Adaptive Redundancy: Third Core Novelty</p>
         </div>
     </div>
-    
+
     <script>
-        // Animate bars on load
+        // Format bytes to human readable string
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // Update dashboard with stats
+        function updateDashboard(stats) {
+            if (!stats) return;
+
+            // Calculate percentages
+            const totalVideos = stats.total_videos || 0;
+            const hotVideos = stats.hot_videos || 0;
+            const coldVideos = stats.cold_videos || 0;
+            const hotPercent = totalVideos > 0 ? (hotVideos / totalVideos * 100).toFixed(1) : 0;
+            const coldPercent = totalVideos > 0 ? (coldVideos / totalVideos * 100).toFixed(1) : 0;
+
+            // Update Video Distribution
+            document.getElementById('total-videos').textContent = totalVideos.toLocaleString();
+            document.getElementById('hot-videos').textContent = `${hotVideos.toLocaleString()} (${hotPercent}%)`;
+            document.getElementById('cold-videos').textContent = `${coldVideos.toLocaleString()} (${coldPercent}%)`;
+            document.getElementById('total-chunks').textContent = (stats.total_chunks || 0).toLocaleString();
+
+            // Storage Usage
+            const baseline = stats.baseline_storage_bytes || 0;
+            const current = stats.current_storage_bytes || 0;
+            const saved = stats.storage_saved_bytes || 0;
+            const savingsPercent = stats.savings_percentage || 0;
+
+            document.getElementById('baseline-storage').textContent = formatBytes(baseline);
+            document.getElementById('hot-storage').textContent = formatBytes(stats.hot_storage_bytes || 0);
+            document.getElementById('cold-storage').textContent = formatBytes(stats.cold_storage_bytes || 0);
+            document.getElementById('total-used').textContent = formatBytes(current);
+
+            // Highlight
+            document.getElementById('total-savings-percent').textContent = `${savingsPercent.toFixed(1)}%`;
+            document.getElementById('total-savings-text').textContent = `Saving ${formatBytes(saved)} out of ${formatBytes(baseline)}`;
+            document.getElementById('storage-efficiency').textContent = `${savingsPercent.toFixed(1)}%`;
+
+            // Comparison Chart
+            const adaptivePercent = baseline > 0 ? (current / baseline * 100) : 0;
+            const barAdaptive = document.getElementById('bar-adaptive');
+            barAdaptive.style.width = `${adaptivePercent}%`;
+            barAdaptive.textContent = `${formatBytes(current)} (${adaptivePercent.toFixed(1)}%)`;
+        }
+
+        // Fetch data from API
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/storage/overhead');
+                if (response.ok) {
+                    const stats = await response.json();
+                    updateDashboard(stats);
+                } else {
+                    console.error('Failed to fetch stats, using simulation');
+                    simulateStats();
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+                simulateStats();
+            }
+        }
+
+        // Simulate stats if API fails or for demo purposes
+        function simulateStats() {
+            const mockStats = {
+                total_videos: 1000,
+                hot_videos: 50,
+                cold_videos: 950,
+                total_chunks: 50000,
+                baseline_storage_bytes: 300 * 1024 * 1024 * 1024, // 300 GB
+                current_storage_bytes: 173.5 * 1024 * 1024 * 1024, // 173.5 GB
+                hot_storage_bytes: 15 * 1024 * 1024 * 1024,
+                cold_storage_bytes: 158.5 * 1024 * 1024 * 1024,
+                storage_saved_bytes: 126.5 * 1024 * 1024 * 1024,
+                savings_percentage: 42.2
+            };
+            updateDashboard(mockStats);
+        }
+
+        // Initial load
         window.addEventListener('load', () => {
-            const bars = document.querySelectorAll('.bar-fill');
-            bars.forEach(bar => {
-                const width = bar.style.width;
-                bar.style.width = '0%';
-                setTimeout(() => {
-                    bar.style.width = width;
-                }, 100);
-            });
+            fetchStats();
+            // Refresh every 5 seconds
+            setInterval(fetchStats, 5000);
         });
     </script>
 </body>
+
 </html>

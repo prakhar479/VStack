@@ -14,7 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    def __init__(self, db_path: str = "/data/metadata.db"):
+    def __init__(self, db_path: str = "./data/metadata.db"):
         self.db_path = db_path
         self._connection = None
     
@@ -134,6 +134,12 @@ class DatabaseManager:
             )
         """)
         
+        # Create indexes for performance
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_video_id ON chunks(video_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_replicas_chunk_id ON chunk_replicas(chunk_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_fragments_chunk_id ON chunk_fragments(chunk_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_video_stats_video_id ON video_stats(video_id)")
+        
         await conn.commit()
     
     async def create_video(self, video_id: str, title: str, duration_sec: int) -> bool:
@@ -190,26 +196,36 @@ class DatabaseManager:
             # Get chunks with replicas
             cursor = await conn.execute("""
                 SELECT c.chunk_id, c.sequence_num, c.size_bytes, c.checksum,
-                       GROUP_CONCAT(cr.node_url) as replicas
+                       c.redundancy_mode,
+                       GROUP_CONCAT(cr.node_url, '|') as replicas
                 FROM chunks c
                 LEFT JOIN chunk_replicas cr 
                     ON c.chunk_id = cr.chunk_id 
                     AND cr.status = 'active'
                 WHERE c.video_id = ?
-                GROUP BY c.chunk_id, c.sequence_num, c.size_bytes, c.checksum
+                GROUP BY c.chunk_id, c.sequence_num, c.size_bytes, c.checksum, c.redundancy_mode
                 ORDER BY c.sequence_num
             """, (video_id,))
             
             chunks = []
             async for row in cursor:
-                replicas = row[4].split(',') if row[4] else []
-                chunks.append({
+                replicas = row[5].split('|') if row[5] else []
+                chunk_dict = {
                     "chunk_id": row[0],
                     "sequence_num": row[1],
                     "size_bytes": row[2],
                     "checksum": row[3],
+                    "redundancy_mode": row[4],
                     "replicas": replicas
-                })
+                }
+                
+                # If erasure coded, fetch fragments
+                if row[4] == "erasure_coding":
+                    fragments = await self.get_chunk_fragments(row[0])
+                    if fragments:
+                        chunk_dict["fragments"] = fragments
+                
+                chunks.append(chunk_dict)
             await cursor.close()
             
             return {
@@ -239,7 +255,7 @@ class DatabaseManager:
         """Update node heartbeat and stats"""
         try:
             conn = await self.get_connection()
-            await conn.execute("""
+            cursor = await conn.execute("""
                 UPDATE storage_nodes 
                 SET last_heartbeat = CURRENT_TIMESTAMP,
                     disk_usage_percent = ?,
@@ -248,6 +264,11 @@ class DatabaseManager:
                 WHERE node_id = ?
             """, (disk_usage, chunk_count, node_id))
             await conn.commit()
+            
+            # Check if update actually modified a row
+            if cursor.rowcount == 0:
+                logger.warning(f"Heartbeat update failed: node {node_id} not found")
+                return False
             return True
         except Exception as e:
             logger.error(f"Failed to update heartbeat for node {node_id}: {e}")
@@ -445,12 +466,16 @@ class DatabaseManager:
             
             await cursor.close()
             
-            # Calculate storage overhead
-            replication_overhead = stats["replication"]["total_bytes"] * 3  # 3 full copies
-            erasure_overhead = stats["erasure_coding"]["total_bytes"] * (5/3)  # 5 fragments, need 3
+            # Calculate total storage (not overhead)
+            replication_total_storage = stats["replication"]["total_bytes"] * 3  # 3 full copies
+            erasure_total_storage = stats["erasure_coding"]["total_bytes"] * (5/3)  # 5 fragments
+            
+            # Calculate actual overhead (extra storage beyond original)
+            replication_overhead = stats["replication"]["total_bytes"] * 2  # 2 extra copies
+            erasure_overhead = stats["erasure_coding"]["total_bytes"] * (2/3)  # 2/3 extra
             
             total_logical = stats["replication"]["total_bytes"] + stats["erasure_coding"]["total_bytes"]
-            total_physical = replication_overhead + erasure_overhead
+            total_physical = replication_total_storage + erasure_total_storage
             
             savings = 0.0
             if total_logical > 0:

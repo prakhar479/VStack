@@ -1,315 +1,218 @@
 #!/usr/bin/env python3
 """
-Dashboard Server - Serves the web dashboard and provides real-time status API
+Dashboard Server - Provides API endpoints and serves the dashboard UI
 """
 
 import asyncio
+import aiohttp
 import json
 import logging
 import time
-from aiohttp import web
 import os
-from typing import Dict, List
-from collections import deque
+from aiohttp import web
+from typing import Dict, Optional
+
+from config import config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class MetricsCollector:
-    """Collects and aggregates metrics for dashboard visualization."""
+    """
+    Collects and aggregates metrics from the SmartClient.
+    """
     
-    def __init__(self, history_size: int = 100):
-        """
-        Initialize metrics collector.
+    def __init__(self, client):
+        self.client = client
+        self.history = []
+        self.max_history = 3600  # 1 hour of history at 1s interval
         
-        Args:
-            history_size: Number of historical data points to keep
-        """
-        self.history_size = history_size
-        
-        # Historical metrics
-        self.buffer_history = deque(maxlen=history_size)
-        self.throughput_history = deque(maxlen=history_size)
-        self.node_score_history = {}
-        self.download_time_history = deque(maxlen=history_size)
-        
-        # Aggregated statistics
-        self.total_data_transferred = 0  # bytes
-        self.session_start_time = time.time()
-        
-    def record_buffer_level(self, buffer_level_sec: float, timestamp: float = None):
-        """Record buffer level measurement."""
-        if timestamp is None:
-            timestamp = time.time()
+    async def collect_metrics(self):
+        """Collect current metrics snapshot."""
+        if not self.client:
+            return
             
-        self.buffer_history.append({
-            'timestamp': timestamp,
-            'level': buffer_level_sec
-        })
-        
-    def record_throughput(self, throughput_mbps: float, timestamp: float = None):
-        """Record throughput measurement."""
-        if timestamp is None:
-            timestamp = time.time()
+        try:
+            status = self.client.get_status()
             
-        self.throughput_history.append({
-            'timestamp': timestamp,
-            'throughput': throughput_mbps
-        })
-        
-    def record_node_score(self, node_url: str, score: float, timestamp: float = None):
-        """Record node performance score."""
-        if timestamp is None:
-            timestamp = time.time()
-            
-        if node_url not in self.node_score_history:
-            self.node_score_history[node_url] = deque(maxlen=self.history_size)
-            
-        self.node_score_history[node_url].append({
-            'timestamp': timestamp,
-            'score': score
-        })
-        
-    def record_download(self, chunk_size_bytes: int, download_time_sec: float):
-        """Record chunk download."""
-        self.total_data_transferred += chunk_size_bytes
-        self.download_time_history.append(download_time_sec)
-        
-    def get_average_throughput(self) -> float:
-        """Calculate average throughput from history."""
-        if not self.throughput_history:
-            return 0.0
-            
-        return sum(h['throughput'] for h in self.throughput_history) / len(self.throughput_history)
-        
-    def get_average_buffer_level(self) -> float:
-        """Calculate average buffer level from history."""
-        if not self.buffer_history:
-            return 0.0
-            
-        return sum(h['level'] for h in self.buffer_history) / len(self.buffer_history)
-        
-    def get_average_download_time(self) -> float:
-        """Calculate average chunk download time in milliseconds."""
-        if not self.download_time_history:
-            return 0.0
-            
-        return (sum(self.download_time_history) / len(self.download_time_history)) * 1000
-        
-    def get_session_uptime(self) -> float:
-        """Get session uptime in seconds."""
-        return time.time() - self.session_start_time
-        
-    def get_metrics_summary(self) -> Dict:
-        """Get summary of all collected metrics."""
-        return {
-            'avg_throughput_mbps': self.get_average_throughput(),
-            'avg_buffer_level_sec': self.get_average_buffer_level(),
-            'avg_download_time_ms': self.get_average_download_time(),
-            'total_data_transferred_mb': self.total_data_transferred / (1024 * 1024),
-            'session_uptime_sec': self.get_session_uptime(),
-            'buffer_history': list(self.buffer_history),
-            'throughput_history': list(self.throughput_history),
-            'node_score_history': {
-                node: list(history) 
-                for node, history in self.node_score_history.items()
+            snapshot = {
+                'timestamp': time.time(),
+                'buffer_level': status['buffer']['buffer_level_sec'],
+                'buffer_health': status['buffer']['buffer_health_percent'],
+                'download_rate': self._calculate_download_rate(status),
+                'active_downloads': status['scheduler_stats']['active_downloads'],
+                'node_scores': status['node_scores']
             }
-        }
+            
+            self.history.append(snapshot)
+            
+            # Prune history
+            if len(self.history) > self.max_history:
+                self.history = self.history[-self.max_history:]
+                
+        except Exception as e:
+            logger.error(f"Error collecting metrics: {e}")
+            
+    def _calculate_download_rate(self, status: Dict) -> float:
+        """Calculate aggregate download rate across all nodes."""
+        total_rate = 0.0
+        for node_stats in status.get('network_stats', []):
+            if node_stats and 'bandwidth_mbps' in node_stats:
+                # Use current bandwidth if available, otherwise 0
+                current = node_stats['bandwidth_mbps'].get('current')
+                if current:
+                    total_rate += current
+        return total_rate
+        
+    def get_history(self) -> list:
+        """Get metrics history."""
+        return self.history
 
 
 class DashboardServer:
-    """HTTP server for the web dashboard."""
+    """
+    Web server for the client dashboard.
+    """
     
-    def __init__(self, smart_client, host='0.0.0.0', port=8888):
-        """
-        Initialize dashboard server.
-        
-        Args:
-            smart_client: SmartClient instance to monitor
-            host: Host to bind to
-            port: Port to listen on
-        """
-        self.smart_client = smart_client
-        self.host = host
-        self.port = port
+    def __init__(self, client, port: int = None):
+        self.client = client
+        self.port = port or config.DASHBOARD_PORT
         self.app = web.Application()
-        self.metrics_collector = MetricsCollector()
-        self.setup_routes()
+        self.runner = None
+        self.site = None
+        self.metrics_collector = MetricsCollector(client)
+        self.collect_task = None
         
-        # Start background metrics collection
-        self.collection_task = None
+        # Cache dashboard HTML
+        self.dashboard_html = None
+        self.dashboard_path = os.path.join(os.path.dirname(__file__), 'dashboard.html')
         
-    def setup_routes(self):
-        """Setup HTTP routes."""
-        self.app.router.add_get('/', self.serve_dashboard)
-        self.app.router.add_get('/api/status', self.get_status)
-        self.app.router.add_get('/api/stats', self.get_stats)
-        self.app.router.add_get('/api/metrics', self.get_metrics)
-        self.app.router.add_get('/api/performance', self.get_performance_summary)
+        self._setup_routes()
         
-    async def serve_dashboard(self, request):
-        """Serve the dashboard HTML page."""
-        dashboard_path = os.path.join(os.path.dirname(__file__), 'dashboard.html')
+    def _setup_routes(self):
+        """Setup API routes."""
+        self.app.router.add_get('/', self.handle_index)
+        self.app.router.add_get('/api/status', self.handle_status)
+        self.app.router.add_get('/api/history', self.handle_history)
+        self.app.router.add_post('/api/control', self.handle_control)
         
-        try:
-            with open(dashboard_path, 'r') as f:
-                html_content = f.read()
-            return web.Response(text=html_content, content_type='text/html')
-        except FileNotFoundError:
-            return web.Response(text='Dashboard not found', status=404)
+        # CORS setup (basic)
+        import aiohttp_cors
+        cors = aiohttp_cors.setup(self.app, defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True,
+                expose_headers="*",
+                allow_headers="*",
+            )
+        })
+        
+        for route in list(self.app.router.routes()):
+            cors.add(route)
             
-    async def get_status(self, request):
-        """Get current client status as JSON."""
+    async def start(self):
+        """Start the dashboard server."""
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        self.site = web.TCPSite(self.runner, '0.0.0.0', self.port)
+        await self.site.start()
+        
+        # Start metrics collection
+        self.collect_task = asyncio.create_task(self._collection_loop())
+        
+        logger.info(f"Dashboard server started on http://localhost:{self.port}")
+        
+    async def stop(self):
+        """Stop the dashboard server."""
+        if self.collect_task:
+            self.collect_task.cancel()
+            try:
+                await self.collect_task
+            except asyncio.CancelledError:
+                pass
+                
+        if self.site:
+            await self.site.stop()
+        if self.runner:
+            await self.runner.cleanup()
+            
+        logger.info("Dashboard server stopped")
+        
+    async def _collection_loop(self):
+        """Background task to collect metrics."""
+        while True:
+            try:
+                await self.metrics_collector.collect_metrics()
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in metrics collection: {e}")
+                await asyncio.sleep(1.0)
+                
+    async def handle_index(self, request):
+        """Serve the dashboard HTML."""
         try:
-            status = self.smart_client.get_status()
+            # Load and cache HTML if not already loaded
+            if self.dashboard_html is None:
+                if os.path.exists(self.dashboard_path):
+                    with open(self.dashboard_path, 'r') as f:
+                        self.dashboard_html = f.read()
+                else:
+                    return web.Response(text="Dashboard HTML not found", status=404)
+            
+            return web.Response(text=self.dashboard_html, content_type='text/html')
+        except Exception as e:
+            logger.error(f"Error serving dashboard: {e}")
+            return web.Response(text="Internal Server Error", status=500)
+            
+    async def handle_status(self, request):
+        """Return current client status."""
+        if not self.client:
+            return web.json_response({'error': 'Client not initialized'}, status=503)
+            
+        try:
+            status = self.client.get_status()
             return web.json_response(status)
         except Exception as e:
             logger.error(f"Error getting status: {e}")
             return web.json_response({'error': str(e)}, status=500)
             
-    async def get_stats(self, request):
-        """Get detailed statistics as JSON."""
+    async def handle_history(self, request):
+        """Return metrics history."""
         try:
-            status = self.smart_client.get_status()
-            
-            # Extract detailed stats
-            stats = {
-                'buffer': status.get('buffer', {}),
-                'buffer_stats': status.get('buffer_stats', {}),
-                'scheduler_stats': status.get('scheduler_stats', {}),
-                'network_stats': status.get('network_stats', []),
-                'node_scores': status.get('node_scores', {}),
-                'buffer_history': self.smart_client.buffer_manager.get_buffer_history()
-            }
-            
-            return web.json_response(stats)
+            history = self.metrics_collector.get_history()
+            return web.json_response({'history': history})
         except Exception as e:
-            logger.error(f"Error getting stats: {e}")
+            logger.error(f"Error getting history: {e}")
             return web.json_response({'error': str(e)}, status=500)
             
-    async def get_metrics(self, request):
-        """Get collected metrics history."""
+    async def handle_control(self, request):
+        """Handle control commands (play, stop, etc.)."""
+        if not self.client:
+            return web.json_response({'error': 'Client not initialized'}, status=503)
+            
         try:
-            metrics = self.metrics_collector.get_metrics_summary()
-            return web.json_response(metrics)
+            data = await request.json()
+            command = data.get('command')
+            
+            if command == 'play':
+                video_id = data.get('video_id')
+                if not video_id:
+                    return web.json_response({'error': 'Missing video_id'}, status=400)
+                    
+                # We can't easily await play_video here as it blocks
+                # Ideally, main.py should handle this via an event or queue
+                # For now, we'll just acknowledge
+                return web.json_response({'status': 'Command received (not fully implemented via API)'})
+                
+            elif command == 'stop':
+                await self.client.stop()
+                return web.json_response({'status': 'stopped'})
+                
+            else:
+                return web.json_response({'error': 'Unknown command'}, status=400)
+                
         except Exception as e:
-            logger.error(f"Error getting metrics: {e}")
+            logger.error(f"Error handling control command: {e}")
             return web.json_response({'error': str(e)}, status=500)
-            
-    async def get_performance_summary(self, request):
-        """Get performance summary comparing against targets."""
-        try:
-            status = self.smart_client.get_status()
-            
-            # Performance targets from requirements
-            targets = {
-                'startup_latency_sec': 2.0,
-                'max_rebuffering_events': 1,
-                'min_avg_buffer_sec': 20.0,
-                'min_avg_throughput_mbps': 40.0
-            }
-            
-            # Actual performance
-            actual = {
-                'startup_latency_sec': status.get('startup_latency', 0),
-                'rebuffering_events': status.get('buffer_stats', {}).get('rebuffering_events', 0),
-                'avg_buffer_sec': self.metrics_collector.get_average_buffer_level(),
-                'avg_throughput_mbps': self.metrics_collector.get_average_throughput()
-            }
-            
-            # Calculate if targets are met
-            targets_met = {
-                'startup_latency': actual['startup_latency_sec'] < targets['startup_latency_sec'],
-                'rebuffering': actual['rebuffering_events'] <= targets['max_rebuffering_events'],
-                'buffer_level': actual['avg_buffer_sec'] > targets['min_avg_buffer_sec'],
-                'throughput': actual['avg_throughput_mbps'] > targets['min_avg_throughput_mbps']
-            }
-            
-            summary = {
-                'targets': targets,
-                'actual': actual,
-                'targets_met': targets_met,
-                'overall_score': sum(targets_met.values()) / len(targets_met) * 100
-            }
-            
-            return web.json_response(summary)
-        except Exception as e:
-            logger.error(f"Error getting performance summary: {e}")
-            return web.json_response({'error': str(e)}, status=500)
-            
-    async def _collect_metrics_loop(self):
-        """Background task to collect metrics periodically."""
-        while True:
-            try:
-                status = self.smart_client.get_status()
-                
-                # Record buffer level
-                buffer_level = status.get('buffer', {}).get('buffer_level_sec', 0)
-                self.metrics_collector.record_buffer_level(buffer_level)
-                
-                # Calculate and record throughput
-                network_stats = status.get('network_stats', [])
-                if network_stats:
-                    avg_bandwidth = sum(
-                        node.get('bandwidth_mbps', {}).get('average', 0) 
-                        for node in network_stats
-                    ) / len(network_stats)
-                    self.metrics_collector.record_throughput(avg_bandwidth)
-                
-                # Record node scores
-                node_scores = status.get('node_scores', {})
-                for node_url, score in node_scores.items():
-                    self.metrics_collector.record_node_score(node_url, score)
-                
-                await asyncio.sleep(2.0)  # Collect every 2 seconds
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in metrics collection loop: {e}")
-                await asyncio.sleep(2.0)
-            
-    async def start(self):
-        """Start the dashboard server."""
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
-        await site.start()
-        
-        # Start metrics collection
-        self.collection_task = asyncio.create_task(self._collect_metrics_loop())
-        
-        logger.info(f"Dashboard server started at http://{self.host}:{self.port}")
-        logger.info(f"Open http://localhost:{self.port} in your browser to view the dashboard")
-        
-    async def run(self):
-        """Run the dashboard server indefinitely."""
-        await self.start()
-        
-        # Keep running
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            if self.collection_task:
-                self.collection_task.cancel()
-                try:
-                    await self.collection_task
-                except asyncio.CancelledError:
-                    pass
-
-
-async def main():
-    """Main entry point for standalone dashboard server."""
-    from main import SmartClient
-    
-    # Create a mock client for testing
-    client = SmartClient()
-    
-    # Start dashboard server
-    server = DashboardServer(client, port=8888)
-    await server.run()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

@@ -9,6 +9,9 @@ import os
 import aiohttp
 from aiohttp import web, ClientSession
 import aiofiles
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,7 +43,13 @@ class DemoServer:
         self.app.router.add_get('/api/health', self.get_system_health)
         self.app.router.add_get('/api/videos', self.list_videos)
         self.app.router.add_get('/api/stats', self.get_stats)
+        self.app.router.add_get('/api/storage/overhead', self.get_storage_overhead)
         self.app.router.add_post('/api/upload', self.upload_video)
+        
+        # Client Dashboard Proxy
+        self.app.router.add_get('/client', self.serve_client_dashboard)
+        self.app.router.add_get('/client/', self.serve_client_dashboard)
+        self.app.router.add_get('/client/api/{path:.+}', self.proxy_client_api)
         
     async def serve_index(self, request):
         """Serve the main demo page."""
@@ -151,6 +160,23 @@ class DemoServer:
         except Exception as e:
             logger.error(f'Error getting stats: {e}')
             return web.json_response({'error': str(e)}, status=500)
+
+    async def get_storage_overhead(self, request):
+        """Get storage overhead statistics."""
+        try:
+            async with ClientSession() as session:
+                async with session.get(f'{self.metadata_url}/storage/overhead') as resp:
+                    if resp.status == 200:
+                        stats = await resp.json()
+                        return web.json_response(stats)
+                    else:
+                        return web.json_response(
+                            {'error': f'Failed to fetch storage stats: {resp.status}'},
+                            status=resp.status
+                        )
+        except Exception as e:
+            logger.error(f'Error getting storage stats: {e}')
+            return web.json_response({'error': str(e)}, status=500)
             
     async def upload_video(self, request):
         """Proxy video upload to uploader service."""
@@ -166,7 +192,7 @@ class DemoServer:
                         data.add_field('video', 
                                      await field.read(),
                                      filename=field.filename,
-                                     content_type=field.content_type)
+                                     content_type=field.headers.get('Content-Type'))
                     elif field.name == 'title':
                         data.add_field('title', await field.text())
                         
@@ -176,6 +202,36 @@ class DemoServer:
                     
         except Exception as e:
             logger.error(f'Error uploading video: {e}')
+            return web.json_response({'error': str(e)}, status=500)
+            
+    async def serve_client_dashboard(self, request):
+        """Proxy the client dashboard HTML."""
+        try:
+            # Ensure trailing slash for relative links to work
+            if not request.path.endswith('/'):
+                return web.HTTPFound('/client/')
+                
+            async with ClientSession() as session:
+                async with session.get(f'{self.client_url}/') as resp:
+                    if resp.status == 200:
+                        content = await resp.text()
+                        return web.Response(text=content, content_type='text/html')
+                    else:
+                        return web.Response(text='Client dashboard not found', status=resp.status)
+        except Exception as e:
+            logger.error(f'Error serving client dashboard: {e}')
+            return web.Response(text=f'Error connecting to client: {str(e)}', status=500)
+
+    async def proxy_client_api(self, request):
+        """Proxy client API calls."""
+        path = request.match_info['path']
+        try:
+            async with ClientSession() as session:
+                async with session.get(f'{self.client_url}/api/{path}') as resp:
+                    content = await resp.read()
+                    return web.Response(body=content, status=resp.status, content_type=resp.content_type)
+        except Exception as e:
+            logger.error(f'Error proxying client API: {e}')
             return web.json_response({'error': str(e)}, status=500)
             
     async def start(self):

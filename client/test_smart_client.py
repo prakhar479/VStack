@@ -12,6 +12,7 @@ from collections import deque
 from network_monitor import NetworkMonitor
 from scheduler import ChunkScheduler
 from buffer_manager import BufferManager
+from config import config
 
 # Configure pytest-asyncio
 pytest_plugins = ('pytest_asyncio',)
@@ -23,24 +24,28 @@ class TestNetworkMonitor:
     @pytest.mark.asyncio
     async def test_initialization(self):
         """Test network monitor initialization."""
-        monitor = NetworkMonitor(ping_interval=3.0, history_size=10)
-        
-        assert monitor.ping_interval == 3.0
-        assert monitor.history_size == 10
-        assert not monitor.monitoring
-        assert len(monitor.node_urls) == 0
+        with patch('config.config.PING_INTERVAL', 3.0), \
+             patch('config.config.HISTORY_SIZE', 10):
+            monitor = NetworkMonitor()
+            
+            assert monitor.ping_interval == 3.0
+            assert monitor.history_size == 10
+            assert not monitor.monitoring
+            assert len(monitor.node_urls) == 0
         
     @pytest.mark.asyncio
     async def test_start_stop_monitoring(self):
         """Test starting and stopping network monitoring."""
-        monitor = NetworkMonitor(ping_interval=1.0)
+        monitor = NetworkMonitor()
         nodes = ['http://node1:8080', 'http://node2:8080']
         
         try:
             # Start monitoring
-            await monitor.start_monitoring(nodes)
+            session = AsyncMock()
+            await monitor.start_monitoring(nodes, session)
             assert monitor.monitoring
             assert monitor.node_urls == nodes
+            assert monitor.session == session
             
             # Give it a moment to run
             await asyncio.sleep(0.5)
@@ -48,6 +53,7 @@ class TestNetworkMonitor:
             # Always stop monitoring to cleanup
             await monitor.stop_monitoring()
             assert not monitor.monitoring
+            assert monitor.session is None
         
     @pytest.mark.asyncio
     async def test_node_scoring_formula(self):
@@ -130,11 +136,12 @@ class TestChunkScheduler:
     def test_initialization(self):
         """Test chunk scheduler initialization."""
         monitor = NetworkMonitor()
-        scheduler = ChunkScheduler(monitor, max_concurrent_downloads=4)
-        
-        assert scheduler.max_concurrent_downloads == 4
-        assert scheduler.total_downloads == 0
-        assert scheduler.failed_downloads == 0
+        with patch('config.config.MAX_CONCURRENT_DOWNLOADS', 4):
+            scheduler = ChunkScheduler(monitor)
+            
+            assert scheduler.max_concurrent_downloads == 4
+            assert scheduler.total_downloads == 0
+            assert scheduler.failed_downloads == 0
         
     def test_select_best_node(self):
         """Test node selection based on performance scores."""
@@ -215,69 +222,67 @@ class TestBufferManager:
     
     def test_initialization(self):
         """Test buffer manager initialization."""
-        buffer = BufferManager(
-            target_buffer_sec=30,
-            low_water_mark_sec=15,
-            chunk_duration_sec=10
-        )
-        
-        assert buffer.target_buffer_sec == 30
-        assert buffer.low_water_mark_sec == 15
-        assert buffer.chunk_duration_sec == 10
-        assert buffer.current_position == 0
-        assert not buffer.playback_started
+        with patch('config.config.TARGET_BUFFER_SEC', 30), \
+             patch('config.config.LOW_WATER_MARK_SEC', 15), \
+             patch('config.config.CHUNK_DURATION_SEC', 10):
+            buffer = BufferManager()
+            
+            assert buffer.target_buffer_sec == 30
+            assert buffer.low_water_mark_sec == 15
+            assert buffer.chunk_duration_sec == 10
+            assert buffer.current_position == 0
+            assert not buffer.playback_started
         
     def test_buffer_level_calculation(self):
         """Test buffer level calculation in seconds."""
-        buffer = BufferManager(chunk_duration_sec=10)
-        
-        # Empty buffer
-        assert buffer.get_buffer_level_seconds() == 0
-        
-        # Add 3 chunks
-        buffer.add_chunk('chunk-0', 0, b'data0')
-        buffer.add_chunk('chunk-1', 1, b'data1')
-        buffer.add_chunk('chunk-2', 2, b'data2')
-        
-        # Should be 30 seconds (3 chunks × 10 seconds)
-        assert buffer.get_buffer_level_seconds() == 30
+        with patch('config.config.CHUNK_DURATION_SEC', 10):
+            buffer = BufferManager()
+            
+            # Empty buffer
+            assert buffer.get_buffer_level_seconds() == 0
+            
+            # Add 3 chunks
+            buffer.add_chunk('chunk-0', 0, b'data0')
+            buffer.add_chunk('chunk-1', 1, b'data1')
+            buffer.add_chunk('chunk-2', 2, b'data2')
+            
+            # Should be 30 seconds (3 chunks × 10 seconds)
+            assert buffer.get_buffer_level_seconds() == 30
         
     def test_needs_more_chunks(self):
         """Test low water mark detection."""
-        buffer = BufferManager(
-            target_buffer_sec=30,
-            low_water_mark_sec=15,
-            chunk_duration_sec=10
-        )
-        
-        # Empty buffer needs chunks
-        assert buffer.needs_more_chunks()
-        
-        # Add 2 chunks (20 seconds) - above low water mark
-        buffer.add_chunk('chunk-0', 0, b'data0')
-        buffer.add_chunk('chunk-1', 1, b'data1')
-        
-        assert not buffer.needs_more_chunks()
-        
-        # Add only 1 chunk (10 seconds) - below low water mark
-        buffer.buffer.clear()
-        buffer.add_chunk('chunk-0', 0, b'data0')
-        
-        assert buffer.needs_more_chunks()
+        with patch('config.config.TARGET_BUFFER_SEC', 30), \
+             patch('config.config.LOW_WATER_MARK_SEC', 15), \
+             patch('config.config.CHUNK_DURATION_SEC', 10):
+            buffer = BufferManager()
+            
+            # Empty buffer needs chunks
+            assert buffer.needs_more_chunks()
+            
+            # Add 2 chunks (20 seconds) - above low water mark
+            buffer.add_chunk('chunk-0', 0, b'data0')
+            buffer.add_chunk('chunk-1', 1, b'data1')
+            
+            assert not buffer.needs_more_chunks()
+            
+            # Add only 1 chunk (10 seconds) - below low water mark
+            buffer.buffer.clear()
+            buffer.add_chunk('chunk-0', 0, b'data0')
+            
+            assert buffer.needs_more_chunks()
         
     def test_can_start_playback(self):
         """Test playback start condition."""
-        buffer = BufferManager(
-            start_playback_sec=10,
-            chunk_duration_sec=10
-        )
-        
-        # Not enough buffer
-        assert not buffer.can_start_playback()
-        
-        # Add 1 chunk (10 seconds) - exactly enough
-        buffer.add_chunk('chunk-0', 0, b'data0')
-        assert buffer.can_start_playback()
+        with patch('config.config.START_PLAYBACK_SEC', 10), \
+             patch('config.config.CHUNK_DURATION_SEC', 10):
+            buffer = BufferManager()
+            
+            # Not enough buffer
+            assert not buffer.can_start_playback()
+            
+            # Add 1 chunk (10 seconds) - exactly enough
+            buffer.add_chunk('chunk-0', 0, b'data0')
+            assert buffer.can_start_playback()
         
     def test_add_chunk_in_order(self):
         """Test adding chunks in sequential order."""
@@ -412,24 +417,23 @@ class TestBufferManager:
         
     def test_buffer_status(self):
         """Test buffer status reporting."""
-        buffer = BufferManager(
-            target_buffer_sec=30,
-            low_water_mark_sec=15,
-            chunk_duration_sec=10
-        )
-        
-        # Empty buffer
-        status = buffer.get_buffer_status()
-        assert status['state'] == 'empty'
-        assert status['buffer_level_sec'] == 0
-        
-        # Add chunks to reach healthy state
-        buffer.add_chunk('chunk-0', 0, b'data0')
-        buffer.add_chunk('chunk-1', 1, b'data1')
-        
-        status = buffer.get_buffer_status()
-        assert status['state'] == 'healthy'
-        assert status['buffer_level_sec'] == 20
+        with patch('config.config.TARGET_BUFFER_SEC', 30), \
+             patch('config.config.LOW_WATER_MARK_SEC', 15), \
+             patch('config.config.CHUNK_DURATION_SEC', 10):
+            buffer = BufferManager()
+            
+            # Empty buffer
+            status = buffer.get_buffer_status()
+            assert status['state'] == 'empty'
+            assert status['buffer_level_sec'] == 0
+            
+            # Add chunks to reach healthy state
+            buffer.add_chunk('chunk-0', 0, b'data0')
+            buffer.add_chunk('chunk-1', 1, b'data1')
+            
+            status = buffer.get_buffer_status()
+            assert status['state'] == 'healthy'
+            assert status['buffer_level_sec'] == 20
         
     def test_buffer_reset(self):
         """Test buffer reset functionality."""

@@ -41,6 +41,18 @@ class ChunkPaxos:
         self.db = db_manager
         self.timeout = timeout_sec
         self.ballot_counter = 0
+        self.client = None
+        
+    async def initialize(self):
+        """Initialize HTTP client"""
+        if self.client is None:
+            self.client = httpx.AsyncClient(timeout=self.timeout)
+
+    async def close(self):
+        """Close HTTP client"""
+        if self.client:
+            await self.client.aclose()
+            self.client = None
     
     def _generate_ballot_number(self) -> int:
         """Generate unique ballot number"""
@@ -62,6 +74,10 @@ class ChunkPaxos:
         if len(node_urls) < 1:
             raise ValueError("At least one node required for consensus")
         
+        # Warn about degraded consensus with few nodes
+        if len(node_urls) < 3:
+            logger.warning(f"Consensus with {len(node_urls)} nodes - degraded mode, no fault tolerance")
+        
         quorum_size = len(node_urls) // 2 + 1
         ballot_number = self._generate_ballot_number()
         
@@ -81,9 +97,11 @@ class ChunkPaxos:
                     
                     # If not enough nodes, try with a new ballot number
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        logger.info(f"Retrying consensus for {chunk_id} in {delay}s (attempt {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(delay)
+                        delay = min(base_delay * (2 ** attempt), 10.0)  # Cap at 10s
+                        jitter = random.uniform(0, 0.5)  # Add jitter to prevent thundering herd
+                        total_delay = delay + jitter
+                        logger.info(f"Retrying consensus for {chunk_id} in {total_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(total_delay)
                         ballot_number = self._generate_ballot_number()
                         continue
                     else:
@@ -98,9 +116,11 @@ class ChunkPaxos:
                     
                     # If not enough accepts, try with a new ballot number
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        logger.info(f"Retrying consensus for {chunk_id} in {delay}s (attempt {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(delay)
+                        delay = min(base_delay * (2 ** attempt), 10.0)  # Cap at 10s
+                        jitter = random.uniform(0, 0.5)  # Add jitter to prevent thundering herd
+                        total_delay = delay + jitter
+                        logger.info(f"Retrying consensus for {chunk_id} in {total_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(total_delay)
                         ballot_number = self._generate_ballot_number()
                         continue
                     else:
@@ -165,30 +185,32 @@ class ChunkPaxos:
                                   ballot_number: int) -> bool:
         """Send prepare request to a single node"""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.head(
-                    f"{node_url}/chunk/{chunk_id}",
-                    headers={"X-Ballot-Number": str(ballot_number)}
-                )
+            if self.client is None:
+                await self.initialize()
                 
-                # Node accepts if chunk doesn't exist or ballot is higher
-                if response.status_code == 404:  # Chunk doesn't exist - good
+            response = await self.client.head(
+                f"{node_url}/chunk/{chunk_id}",
+                headers={"X-Ballot-Number": str(ballot_number)}
+            )
+            
+            # Node accepts if chunk doesn't exist or ballot is higher
+            if response.status_code == 404:  # Chunk doesn't exist - good
+                return True
+            elif response.status_code == 200:  # Chunk exists - check ballot
+                existing_ballot = int(response.headers.get("X-Ballot-Number", "0"))
+                if ballot_number > existing_ballot:
                     return True
-                elif response.status_code == 200:  # Chunk exists - check ballot
-                    existing_ballot = int(response.headers.get("X-Ballot-Number", "0"))
-                    if ballot_number > existing_ballot:
-                        return True
-                    elif ballot_number < existing_ballot:
-                        # Higher ballot number exists - conflict
-                        raise BallotConflictException(f"Higher ballot {existing_ballot} exists on {node_url}")
-                    else:
-                        # Same ballot number - this is unusual but acceptable
-                        return True
-                elif response.status_code == 409:  # Conflict - node is busy with another consensus
-                    logger.debug(f"Node {node_url} busy with another consensus for {chunk_id}")
-                    return False
+                elif ballot_number < existing_ballot:
+                    # Higher ballot number exists - conflict
+                    raise BallotConflictException(f"Higher ballot {existing_ballot} exists on {node_url}")
                 else:
-                    return False
+                    # Same ballot number - this is unusual but acceptable
+                    return True
+            elif response.status_code == 409:  # Conflict - node is busy with another consensus
+                logger.debug(f"Node {node_url} busy with another consensus for {chunk_id}")
+                return False
+            else:
+                return False
                     
         except BallotConflictException:
             raise  # Re-raise ballot conflicts
@@ -231,20 +253,19 @@ class ChunkPaxos:
         """Send accept request to a single node"""
         try:
             # First verify the chunk exists and has correct checksum
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.head(f"{node_url}/chunk/{chunk_id}")
-                
-                if response.status_code == 200:
-                    # Verify checksum matches
-                    node_checksum = response.headers.get("ETag", "").strip('"')
-                    if node_checksum == checksum:
-                        return True
-                    else:
-                        logger.warning(f"Checksum mismatch for {chunk_id} on {node_url}")
-                        return False
+            response = await self.client.head(f"{node_url}/chunk/{chunk_id}")
+            
+            if response.status_code == 200:
+                # Verify checksum matches
+                node_checksum = response.headers.get("ETag", "").strip('"')
+                if node_checksum == checksum:
+                    return True
                 else:
-                    logger.warning(f"Chunk {chunk_id} not found on {node_url}")
+                    logger.warning(f"Checksum mismatch for {chunk_id} on {node_url}")
                     return False
+            else:
+                logger.warning(f"Chunk {chunk_id} not found on {node_url}")
+                return False
                     
         except Exception as e:
             logger.debug(f"Accept request failed for {node_url}: {e}")
@@ -299,11 +320,15 @@ class ChunkPaxos:
                 WHERE video_id = ?
             """, (video_id, video_id))
             
-            await conn.commit()
+            # Update consensus state within same transaction
+            await conn.execute("""
+                INSERT OR REPLACE INTO consensus_state 
+                (chunk_id, promised_ballot, accepted_ballot, accepted_value, phase)
+                VALUES (?, ?, ?, ?, ?)
+            """, (chunk_id, ballot_number, ballot_number, json.dumps(accepted_nodes), 'committed'))
             
-            # Update consensus state to committed
-            await self._update_consensus_state(chunk_id, ballot_number, 
-                                             json.dumps(accepted_nodes), ConsensusPhase.COMMITTED)
+            await conn.commit()
+            logger.debug(f"Committed chunk {chunk_id} successfully")
             
         except Exception as e:
             logger.error(f"Commit phase failed for {chunk_id}: {e}")
@@ -333,6 +358,12 @@ class ChunkPaxos:
                 DELETE FROM chunk_replicas 
                 WHERE chunk_id = ? AND ballot_number = ?
             """, (chunk_id, ballot_number))
+            
+            # Remove any partial fragment entries (for erasure coding)
+            await conn.execute("""
+                DELETE FROM chunk_fragments 
+                WHERE chunk_id = ?
+            """, (chunk_id,))
             
             # Reset consensus state
             await conn.execute("""

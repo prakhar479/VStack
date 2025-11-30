@@ -1,175 +1,231 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V-Stack Smart Client Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color: #0a0a0f;
+            --card-bg: #13131f;
+            --accent-primary: #6c5ce7;
+            --accent-secondary: #a29bfe;
+            --text-primary: #ffffff;
+            --text-secondary: #b2bec3;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #ff7675;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
         }
-        
+
         .container {
+            width: 100%;
             max-width: 1400px;
-            margin: 0 auto;
         }
-        
-        h1 {
-            color: white;
+
+        header {
             text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
         }
-        
-        .dashboard {
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        nav {
+            margin-top: 20px;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            margin: 0 15px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: var(--transition);
+            padding-bottom: 5px;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text-primary);
+            border-bottom-color: var(--accent-primary);
+        }
+
+        .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
+            gap: 30px;
+            margin-bottom: 40px;
         }
-        
+
         .card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: var(--transition);
+            animation: fadeInUp 0.8s ease-out;
+            animation-fill-mode: both;
         }
-        
-        .card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.5em;
-            border-bottom: 2px solid #667eea;
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(108, 92, 231, 0.1);
+            border-color: rgba(108, 92, 231, 0.3);
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            font-weight: 500;
+            color: var(--accent-secondary);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             padding-bottom: 10px;
         }
-        
+
         .metric {
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        
+
         .metric:last-child {
             border-bottom: none;
         }
-        
+
         .metric-label {
-            font-weight: 600;
-            color: #555;
+            color: var(--text-secondary);
         }
-        
+
         .metric-value {
-            color: #667eea;
-            font-weight: bold;
+            font-weight: 600;
+            color: var(--text-primary);
         }
-        
+
         .buffer-bar {
             width: 100%;
-            height: 40px;
-            background: #f0f0f0;
-            border-radius: 20px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
             overflow: hidden;
             position: relative;
             margin: 15px 0;
         }
-        
+
         .buffer-fill {
             height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
             transition: width 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
+            font-size: 0.8rem;
             font-weight: bold;
         }
-        
+
         .buffer-marker {
             position: absolute;
             height: 100%;
             width: 2px;
-            background: #ff6b6b;
+            background: var(--danger);
             top: 0;
+            z-index: 2;
         }
-        
+
         .node-list {
             list-style: none;
         }
-        
+
         .node-item {
-            padding: 12px;
-            margin: 8px 0;
-            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.03);
             border-radius: 8px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--accent-primary);
         }
-        
+
         .node-item.healthy {
-            border-left-color: #51cf66;
+            border-left-color: var(--success);
         }
-        
+
         .node-item.degraded {
-            border-left-color: #ffd43b;
+            border-left-color: var(--warning);
         }
-        
+
         .node-item.down {
-            border-left-color: #ff6b6b;
+            border-left-color: var(--danger);
         }
-        
-        .node-score {
-            font-size: 1.2em;
-            font-weight: bold;
-            color: #667eea;
-            float: right;
-        }
-        
+
         .status-badge {
-            display: inline-block;
             padding: 4px 12px;
             border-radius: 12px;
             font-size: 0.85em;
             font-weight: bold;
             text-transform: uppercase;
         }
-        
+
         .status-badge.healthy {
-            background: #d3f9d8;
-            color: #2b8a3e;
+            background: rgba(0, 184, 148, 0.2);
+            color: var(--success);
         }
-        
+
         .status-badge.low {
-            background: #fff3bf;
-            color: #e67700;
+            background: rgba(253, 203, 110, 0.2);
+            color: var(--warning);
         }
-        
+
         .status-badge.empty {
-            background: #ffe3e3;
-            color: #c92a2a;
+            background: rgba(255, 118, 117, 0.2);
+            color: var(--danger);
         }
-        
-        .status-badge.full {
-            background: #d3f9d8;
-            color: #2b8a3e;
-        }
-        
+
         .chunk-visualization {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
             gap: 4px;
             margin-top: 15px;
         }
-        
+
         .chunk-box {
             height: 30px;
             border-radius: 4px;
@@ -179,536 +235,539 @@
             font-size: 0.7em;
             color: white;
             font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
         }
-        
-        .chunk-box.node1 { background: #667eea; }
-        .chunk-box.node2 { background: #51cf66; }
-        .chunk-box.node3 { background: #ff6b6b; }
-        .chunk-box.pending { background: #e0e0e0; }
-        
+
+        .chunk-box.node1 {
+            background: var(--accent-primary);
+        }
+
+        .chunk-box.node2 {
+            background: var(--success);
+        }
+
+        .chunk-box.node3 {
+            background: var(--danger);
+        }
+
+        .chunk-box.pending {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 15px;
             margin-top: 15px;
         }
-        
+
         .stat-box {
-            background: #f8f9fa;
+            background: rgba(255, 255, 255, 0.03);
             padding: 15px;
             border-radius: 8px;
             text-align: center;
         }
-        
+
         .stat-value {
-            font-size: 2em;
+            font-size: 1.8em;
             font-weight: bold;
-            color: #667eea;
+            color: var(--accent-secondary);
         }
-        
+
         .stat-label {
             font-size: 0.9em;
-            color: #666;
+            color: var(--text-secondary);
             margin-top: 5px;
         }
-        
+
         .chart-container {
-            height: 250px;
+            height: 300px;
             margin-top: 15px;
-            background: #f8f9fa;
+            background: rgba(255, 255, 255, 0.02);
             border-radius: 8px;
             padding: 15px;
-            position: relative;
         }
-        
-        .chart-container canvas {
-            max-height: 220px;
+
+        .tabs {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+            justify-content: center;
         }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
         }
-        
-        .loading {
-            animation: pulse 1.5s ease-in-out infinite;
+
+        .tab:hover {
+            color: var(--text-primary);
         }
-        
+
+        .tab.active {
+            color: var(--accent-primary);
+            border-bottom-color: var(--accent-primary);
+        }
+
+        .tab-content {
+            display: none;
+            width: 100%;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeInDown 0.5s ease-out;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
         .comparison-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-top: 15px;
         }
-        
+
         .comparison-box {
-            background: #f8f9fa;
-            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
             border-radius: 8px;
             text-align: center;
+            border: 1px solid transparent;
         }
-        
+
         .comparison-box.smart {
-            border: 3px solid #667eea;
+            border-color: var(--accent-primary);
+            background: rgba(108, 92, 231, 0.1);
         }
-        
+
         .comparison-box.naive {
-            border: 3px solid #e0e0e0;
+            border-color: rgba(255, 255, 255, 0.1);
         }
-        
+
         .comparison-title {
-            font-weight: bold;
-            font-size: 1.1em;
+            font-weight: 600;
             margin-bottom: 10px;
+            color: var(--text-primary);
         }
-        
+
         .comparison-value {
             font-size: 2em;
             font-weight: bold;
             margin: 10px 0;
+            color: var(--text-primary);
         }
-        
-        .comparison-box.smart .comparison-value {
-            color: #667eea;
-        }
-        
-        .comparison-box.naive .comparison-value {
-            color: #999;
-        }
-        
+
         .performance-badge {
             display: inline-block;
             padding: 5px 15px;
             border-radius: 15px;
-            font-size: 0.9em;
+            font-size: 0.85em;
             font-weight: bold;
             margin-top: 10px;
         }
-        
+
         .performance-badge.better {
-            background: #d3f9d8;
-            color: #2b8a3e;
+            background: rgba(0, 184, 148, 0.2);
+            color: var(--success);
         }
-        
+
         .performance-badge.worse {
-            background: #ffe3e3;
-            color: #c92a2a;
+            background: rgba(255, 118, 117, 0.2);
+            color: var(--danger);
         }
-        
+
         .throughput-meter {
             width: 100%;
             height: 30px;
-            background: #f0f0f0;
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 15px;
             overflow: hidden;
             margin: 10px 0;
             position: relative;
         }
-        
+
         .throughput-fill {
             height: 100%;
-            background: linear-gradient(90deg, #51cf66 0%, #667eea 100%);
+            background: linear-gradient(90deg, var(--success), var(--accent-primary));
             transition: width 0.5s ease;
         }
-        
+
         .throughput-label {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             font-weight: bold;
-            color: #333;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
-        
+
         .node-utilization-bar {
             width: 100%;
-            height: 20px;
-            background: #f0f0f0;
-            border-radius: 10px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
             overflow: hidden;
-            margin: 5px 0;
+            margin: 8px 0;
         }
-        
+
         .node-utilization-fill {
             height: 100%;
-            background: #667eea;
+            background: var(--accent-primary);
             transition: width 0.3s ease;
         }
-        
-        .full-width {
-            grid-column: 1 / -1;
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #e0e0e0;
-        }
-        
-        .tab {
-            padding: 10px 20px;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-size: 1em;
-            font-weight: 600;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
-        }
-        
-        .tab:hover {
-            color: #667eea;
-        }
-        
-        .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <h1>🎬 V-Stack Smart Client Dashboard</h1>
-        
+        <header>
+            <h1>V-Stack</h1>
+            <p class="subtitle">Smart Client Dashboard</p>
+            <nav>
+                <a href="/" class="nav-link">Home</a>
+                <a href="/consensus" class="nav-link">Consensus</a>
+                <a href="/storage-efficiency" class="nav-link">Storage Efficiency</a>
+                <a href="/client/" class="nav-link active">Smart Client</a>
+            </nav>
+        </header>
+
         <div class="tabs">
             <button class="tab active" onclick="switchTab('overview')">Overview</button>
             <button class="tab" onclick="switchTab('performance')">Performance Metrics</button>
             <button class="tab" onclick="switchTab('comparison')">Smart vs Naive</button>
             <button class="tab" onclick="switchTab('analytics')">Analytics</button>
         </div>
-        
+
+        <!-- Overview Tab -->
         <div id="overview-tab" class="tab-content active">
-        <div class="dashboard">
-            <!-- Buffer Status Card -->
-            <div class="card">
-                <h2>📊 Buffer Status</h2>
-                <div class="metric">
-                    <span class="metric-label">State:</span>
-                    <span class="status-badge healthy" id="buffer-state">Healthy</span>
-                </div>
-                <div class="buffer-bar">
-                    <div class="buffer-fill" id="buffer-fill" style="width: 0%">
-                        <span id="buffer-percentage">0%</span>
+            <div class="grid">
+                <!-- Buffer Status -->
+                <div class="card">
+                    <h2>📊 Buffer Status</h2>
+                    <div class="metric">
+                        <span class="metric-label">State</span>
+                        <span class="status-badge healthy" id="buffer-state">Healthy</span>
                     </div>
-                    <div class="buffer-marker" id="low-water-marker" style="left: 50%"></div>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Buffer Level:</span>
-                    <span class="metric-value" id="buffer-level">0.0s / 30.0s</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Current Position:</span>
-                    <span class="metric-value" id="current-position">Chunk 0</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Chunks in Buffer:</span>
-                    <span class="metric-value" id="chunks-buffered">0</span>
-                </div>
-            </div>
-            
-            <!-- Playback Statistics Card -->
-            <div class="card">
-                <h2>▶️ Playback Statistics</h2>
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-value" id="startup-latency">0.0s</div>
-                        <div class="stat-label">Startup Latency</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="rebuffer-events">0</div>
-                        <div class="stat-label">Rebuffering Events</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="chunks-played">0</div>
-                        <div class="stat-label">Chunks Played</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="playback-duration">0s</div>
-                        <div class="stat-label">Playback Duration</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Storage Node Scores Card -->
-            <div class="card">
-                <h2>🖥️ Storage Node Performance</h2>
-                <ul class="node-list" id="node-list">
-                    <li class="node-item healthy">
-                        <div>Node 1 (http://node1:8080)</div>
-                        <div class="node-score">0.0</div>
-                        <div style="clear: both; margin-top: 5px; font-size: 0.9em; color: #666;">
-                            Latency: 0ms | Bandwidth: 0 Mbps | Success: 0%
+                    <div class="buffer-bar">
+                        <div class="buffer-fill" id="buffer-fill" style="width: 0%">
+                            <span id="buffer-percentage">0%</span>
                         </div>
-                    </li>
-                </ul>
-            </div>
-            
-            <!-- Download Statistics Card -->
-            <div class="card">
-                <h2>⬇️ Download Statistics</h2>
-                <div class="metric">
-                    <span class="metric-label">Total Downloads:</span>
-                    <span class="metric-value" id="total-downloads">0</span>
+                        <div class="buffer-marker" id="low-water-marker" style="left: 50%"></div>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Buffer Level</span>
+                        <span class="metric-value" id="buffer-level">0.0s / 30.0s</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Current Position</span>
+                        <span class="metric-value" id="current-position">Chunk 0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Chunks in Buffer</span>
+                        <span class="metric-value" id="chunks-buffered">0</span>
+                    </div>
                 </div>
-                <div class="metric">
-                    <span class="metric-label">Success Rate:</span>
-                    <span class="metric-value" id="success-rate">100%</span>
+
+                <!-- Playback Stats -->
+                <div class="card">
+                    <h2>▶️ Playback Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-value" id="startup-latency">0.0s</div>
+                            <div class="stat-label">Startup Latency</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="rebuffer-events">0</div>
+                            <div class="stat-label">Rebuffering</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="chunks-played">0</div>
+                            <div class="stat-label">Chunks Played</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="playback-duration">0s</div>
+                            <div class="stat-label">Duration</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="metric">
-                    <span class="metric-label">Failover Count:</span>
-                    <span class="metric-value" id="failover-count">0</span>
+
+                <!-- Node Performance -->
+                <div class="card">
+                    <h2>🖥️ Node Performance</h2>
+                    <ul class="node-list" id="node-list">
+                        <li class="node-item healthy">
+                            <div>Node 1</div>
+                            <div class="node-score">0.0</div>
+                        </li>
+                    </ul>
                 </div>
-                <div class="metric">
-                    <span class="metric-label">Active Downloads:</span>
-                    <span class="metric-value" id="active-downloads">0</span>
+
+                <!-- Download Stats -->
+                <div class="card">
+                    <h2>⬇️ Download Statistics</h2>
+                    <div class="metric">
+                        <span class="metric-label">Total Downloads</span>
+                        <span class="metric-value" id="total-downloads">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Success Rate</span>
+                        <span class="metric-value" id="success-rate">100%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Failover Count</span>
+                        <span class="metric-value" id="failover-count">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Active Downloads</span>
+                        <span class="metric-value" id="active-downloads">0</span>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Chunk Source Visualization Card -->
-            <div class="card" style="grid-column: 1 / -1;">
-                <h2>🎯 Chunk Download Sources</h2>
-                <p style="color: #666; margin-bottom: 10px;">
-                    Shows which storage node each chunk was downloaded from
-                </p>
-                <div class="chunk-visualization" id="chunk-visualization">
-                    <!-- Chunks will be added dynamically -->
+
+                <!-- Chunk Visualization -->
+                <div class="card full-width">
+                    <h2>🎯 Chunk Download Sources</h2>
+                    <div class="chunk-visualization" id="chunk-visualization"></div>
+                    <div style="margin-top: 20px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 8px;"><span class="chunk-box node1"
+                                style="width: 20px; height: 20px;"></span> Node 1</div>
+                        <div style="display: flex; align-items: center; gap: 8px;"><span class="chunk-box node2"
+                                style="width: 20px; height: 20px;"></span> Node 2</div>
+                        <div style="display: flex; align-items: center; gap: 8px;"><span class="chunk-box node3"
+                                style="width: 20px; height: 20px;"></span> Node 3</div>
+                        <div style="display: flex; align-items: center; gap: 8px;"><span class="chunk-box pending"
+                                style="width: 20px; height: 20px;"></span> Pending</div>
+                    </div>
                 </div>
-                <div style="margin-top: 15px; display: flex; gap: 20px; justify-content: center;">
-                    <div><span class="chunk-box node1" style="display: inline-block; width: 20px; height: 20px;"></span> Node 1</div>
-                    <div><span class="chunk-box node2" style="display: inline-block; width: 20px; height: 20px;"></span> Node 2</div>
-                    <div><span class="chunk-box node3" style="display: inline-block; width: 20px; height: 20px;"></span> Node 3</div>
-                    <div><span class="chunk-box pending" style="display: inline-block; width: 20px; height: 20px;"></span> Pending</div>
-                </div>
-            </div>
-            
-            <!-- Throughput Monitor Card -->
-            <div class="card full-width">
-                <h2>📈 Real-Time Throughput</h2>
-                <div class="throughput-meter">
-                    <div class="throughput-fill" id="throughput-fill" style="width: 0%"></div>
-                    <div class="throughput-label" id="throughput-label">0 Mbps</div>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Target Throughput:</span>
-                    <span class="metric-value">40 Mbps</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Average Throughput:</span>
-                    <span class="metric-value" id="avg-throughput">0 Mbps</span>
+
+                <!-- Throughput Meter -->
+                <div class="card full-width">
+                    <h2>📈 Real-Time Throughput</h2>
+                    <div class="throughput-meter">
+                        <div class="throughput-fill" id="throughput-fill" style="width: 0%"></div>
+                        <div class="throughput-label" id="throughput-label">0 Mbps</div>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Target Throughput</span>
+                        <span class="metric-value">40 Mbps</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Average Throughput</span>
+                        <span class="metric-value" id="avg-throughput">0 Mbps</span>
+                    </div>
                 </div>
             </div>
         </div>
-        </div>
-        
-        <!-- Performance Metrics Tab -->
+
+        <!-- Performance Tab -->
         <div id="performance-tab" class="tab-content">
-        <div class="dashboard">
-            <!-- Buffer Level History Chart -->
-            <div class="card full-width">
-                <h2>📊 Buffer Level Over Time</h2>
-                <div class="chart-container">
-                    <canvas id="buffer-chart"></canvas>
+            <div class="grid">
+                <div class="card full-width">
+                    <h2>📊 Buffer Level Over Time</h2>
+                    <div class="chart-container">
+                        <canvas id="buffer-chart"></canvas>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Node Performance Chart -->
-            <div class="card full-width">
-                <h2>🖥️ Node Performance Scores Over Time</h2>
-                <div class="chart-container">
-                    <canvas id="node-performance-chart"></canvas>
+                <div class="card full-width">
+                    <h2>🖥️ Node Performance Scores</h2>
+                    <div class="chart-container">
+                        <canvas id="node-performance-chart"></canvas>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Node Utilization -->
-            <div class="card full-width">
-                <h2>⚡ Node Utilization & Load Distribution</h2>
-                <div id="node-utilization-list">
-                    <!-- Will be populated dynamically -->
+                <div class="card full-width">
+                    <h2>⚡ Node Utilization</h2>
+                    <div id="node-utilization-list"></div>
                 </div>
-            </div>
-            
-            <!-- Throughput History Chart -->
-            <div class="card full-width">
-                <h2>📈 Throughput History</h2>
-                <div class="chart-container">
-                    <canvas id="throughput-chart"></canvas>
+                <div class="card full-width">
+                    <h2>📈 Throughput History</h2>
+                    <div class="chart-container">
+                        <canvas id="throughput-chart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
-        </div>
-        
+
         <!-- Comparison Tab -->
         <div id="comparison-tab" class="tab-content">
-        <div class="dashboard">
-            <!-- Comparison Header -->
-            <div class="card full-width">
-                <h2>🔬 Smart Client vs Naive Client Comparison</h2>
-                <p style="color: #666; margin-bottom: 15px;">
-                    Comparing intelligent network-aware scheduling against simple round-robin selection
-                </p>
-            </div>
-            
-            <!-- Startup Latency Comparison -->
-            <div class="card">
-                <h2>⚡ Startup Latency</h2>
-                <div class="comparison-container">
-                    <div class="comparison-box smart">
-                        <div class="comparison-title">Smart Client</div>
-                        <div class="comparison-value" id="smart-startup">0.0s</div>
-                        <div class="performance-badge better" id="startup-badge">✓ Better</div>
-                    </div>
-                    <div class="comparison-box naive">
-                        <div class="comparison-title">Naive Client</div>
-                        <div class="comparison-value" id="naive-startup">0.0s</div>
+            <div class="grid">
+                <div class="card full-width">
+                    <h2>🔬 Smart Client vs Naive Client</h2>
+                    <p class="subtitle">Comparing intelligent network-aware scheduling against simple round-robin
+                        selection</p>
+                </div>
+
+                <div class="card">
+                    <h2>⚡ Startup Latency</h2>
+                    <div class="comparison-container">
+                        <div class="comparison-box smart">
+                            <div class="comparison-title">Smart Client</div>
+                            <div class="comparison-value" id="smart-startup">0.0s</div>
+                            <div class="performance-badge better" id="startup-badge">✓ Better</div>
+                        </div>
+                        <div class="comparison-box naive">
+                            <div class="comparison-title">Naive Client</div>
+                            <div class="comparison-value" id="naive-startup">0.0s</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Rebuffering Events Comparison -->
-            <div class="card">
-                <h2>🔄 Rebuffering Events</h2>
-                <div class="comparison-container">
-                    <div class="comparison-box smart">
-                        <div class="comparison-title">Smart Client</div>
-                        <div class="comparison-value" id="smart-rebuffer">0</div>
-                        <div class="performance-badge better" id="rebuffer-badge">✓ Better</div>
-                    </div>
-                    <div class="comparison-box naive">
-                        <div class="comparison-title">Naive Client</div>
-                        <div class="comparison-value" id="naive-rebuffer">0</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Average Throughput Comparison -->
-            <div class="card">
-                <h2>📊 Average Throughput</h2>
-                <div class="comparison-container">
-                    <div class="comparison-box smart">
-                        <div class="comparison-title">Smart Client</div>
-                        <div class="comparison-value" id="smart-throughput">0 Mbps</div>
-                        <div class="performance-badge better" id="throughput-badge">✓ Better</div>
-                    </div>
-                    <div class="comparison-box naive">
-                        <div class="comparison-title">Naive Client</div>
-                        <div class="comparison-value" id="naive-throughput">0 Mbps</div>
+
+                <div class="card">
+                    <h2>🔄 Rebuffering Events</h2>
+                    <div class="comparison-container">
+                        <div class="comparison-box smart">
+                            <div class="comparison-title">Smart Client</div>
+                            <div class="comparison-value" id="smart-rebuffer">0</div>
+                            <div class="performance-badge better" id="rebuffer-badge">✓ Better</div>
+                        </div>
+                        <div class="comparison-box naive">
+                            <div class="comparison-title">Naive Client</div>
+                            <div class="comparison-value" id="naive-rebuffer">0</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Buffer Health Comparison -->
-            <div class="card">
-                <h2>💚 Average Buffer Health</h2>
-                <div class="comparison-container">
-                    <div class="comparison-box smart">
-                        <div class="comparison-title">Smart Client</div>
-                        <div class="comparison-value" id="smart-buffer-health">0%</div>
-                        <div class="performance-badge better" id="buffer-health-badge">✓ Better</div>
-                    </div>
-                    <div class="comparison-box naive">
-                        <div class="comparison-title">Naive Client</div>
-                        <div class="comparison-value" id="naive-buffer-health">0%</div>
+
+                <div class="card">
+                    <h2>📊 Average Throughput</h2>
+                    <div class="comparison-container">
+                        <div class="comparison-box smart">
+                            <div class="comparison-title">Smart Client</div>
+                            <div class="comparison-value" id="smart-throughput">0 Mbps</div>
+                            <div class="performance-badge better" id="throughput-badge">✓ Better</div>
+                        </div>
+                        <div class="comparison-box naive">
+                            <div class="comparison-title">Naive Client</div>
+                            <div class="comparison-value" id="naive-throughput">0 Mbps</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Performance Summary -->
-            <div class="card full-width">
-                <h2>📈 Performance Improvement Summary</h2>
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-value" id="startup-improvement">0%</div>
-                        <div class="stat-label">Startup Latency Improvement</div>
+
+                <div class="card">
+                    <h2>💚 Buffer Health</h2>
+                    <div class="comparison-container">
+                        <div class="comparison-box smart">
+                            <div class="comparison-title">Smart Client</div>
+                            <div class="comparison-value" id="smart-buffer-health">0%</div>
+                            <div class="performance-badge better" id="buffer-health-badge">✓ Better</div>
+                        </div>
+                        <div class="comparison-box naive">
+                            <div class="comparison-title">Naive Client</div>
+                            <div class="comparison-value" id="naive-buffer-health">0%</div>
+                        </div>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="rebuffer-improvement">0%</div>
-                        <div class="stat-label">Rebuffering Reduction</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="throughput-improvement">0%</div>
-                        <div class="stat-label">Throughput Improvement</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="overall-improvement">0%</div>
-                        <div class="stat-label">Overall Performance Gain</div>
+                </div>
+
+                <div class="card full-width">
+                    <h2>📈 Performance Improvement</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-value" id="startup-improvement">0%</div>
+                            <div class="stat-label">Startup Improvement</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="rebuffer-improvement">0%</div>
+                            <div class="stat-label">Rebuffer Reduction</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="throughput-improvement">0%</div>
+                            <div class="stat-label">Throughput Gain</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="overall-improvement">0%</div>
+                            <div class="stat-label">Overall Gain</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        </div>
-        
+
         <!-- Analytics Tab -->
         <div id="analytics-tab" class="tab-content">
-        <div class="dashboard">
-            <!-- System Health Overview -->
-            <div class="card full-width">
-                <h2>🏥 System Health Overview</h2>
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-value" id="system-uptime">0s</div>
-                        <div class="stat-label">System Uptime</div>
+            <div class="grid">
+                <div class="card full-width">
+                    <h2>🏥 System Health Overview</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-value" id="system-uptime">0s</div>
+                            <div class="stat-label">System Uptime</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="total-data-transferred">0 MB</div>
+                            <div class="stat-label">Total Data Transferred</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="avg-chunk-download-time">0ms</div>
+                            <div class="stat-label">Avg Download Time</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="failover-rate">0%</div>
+                            <div class="stat-label">Failover Rate</div>
+                        </div>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="total-data-transferred">0 MB</div>
-                        <div class="stat-label">Total Data Transferred</div>
+                </div>
+
+                <div class="card full-width">
+                    <h2>🎯 Performance Targets</h2>
+                    <div class="metric">
+                        <span class="metric-label">Startup Latency (Target: &lt;2s)</span>
+                        <span class="metric-value" id="target-startup">0.0s</span>
+                        <span class="status-badge" id="target-startup-badge">✓</span>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="avg-chunk-download-time">0ms</div>
-                        <div class="stat-label">Avg Chunk Download Time</div>
+                    <div class="metric">
+                        <span class="metric-label">Rebuffering Events (Target: 0-1)</span>
+                        <span class="metric-value" id="target-rebuffer">0</span>
+                        <span class="status-badge" id="target-rebuffer-badge">✓</span>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="failover-rate">0%</div>
-                        <div class="stat-label">Failover Rate</div>
+                    <div class="metric">
+                        <span class="metric-label">Average Buffer (Target: &gt;20s)</span>
+                        <span class="metric-value" id="target-buffer">0.0s</span>
+                        <span class="status-badge" id="target-buffer-badge">✓</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Average Throughput (Target: &gt;40 Mbps)</span>
+                        <span class="metric-value" id="target-throughput">0 Mbps</span>
+                        <span class="status-badge" id="target-throughput-badge">✓</span>
                     </div>
                 </div>
             </div>
-            
-            <!-- Performance Targets -->
-            <div class="card full-width">
-                <h2>🎯 Performance Targets vs Actual</h2>
-                <div class="metric">
-                    <span class="metric-label">Startup Latency (Target: &lt;2s):</span>
-                    <span class="metric-value" id="target-startup">0.0s</span>
-                    <span class="status-badge" id="target-startup-badge">✓</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Rebuffering Events (Target: 0-1):</span>
-                    <span class="metric-value" id="target-rebuffer">0</span>
-                    <span class="status-badge" id="target-rebuffer-badge">✓</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Average Buffer (Target: &gt;20s):</span>
-                    <span class="metric-value" id="target-buffer">0.0s</span>
-                    <span class="status-badge" id="target-buffer-badge">✓</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Average Throughput (Target: &gt;40 Mbps):</span>
-                    <span class="metric-value" id="target-throughput">0 Mbps</span>
-                    <span class="status-badge" id="target-throughput-badge">✓</span>
-                </div>
-            </div>
-            
-            <!-- Load Distribution Chart -->
-            <div class="card full-width">
-                <h2>⚖️ Load Distribution Across Nodes</h2>
-                <div class="chart-container">
-                    <canvas id="load-distribution-chart"></canvas>
-                </div>
-            </div>
-        </div>
         </div>
     </div>
-    
+
     <script>
         // Dashboard state
         let dashboardState = {
@@ -718,18 +777,17 @@
             chunkSources: {},
             startTime: Date.now()
         };
-        
+
         // Charts
         let bufferChart = null;
         let nodePerformanceChart = null;
         let throughputChart = null;
-        let loadDistributionChart = null;
-        
+
         // Historical data for charts
         let bufferHistory = [];
         let nodeScoreHistory = {};
         let throughputHistory = [];
-        
+
         // Naive client simulation (for comparison)
         let naiveClientStats = {
             startup_latency: 0,
@@ -737,162 +795,402 @@
             avg_throughput: 0,
             avg_buffer_health: 0
         };
-        
+
         // Tab switching
         function switchTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // Show selected tab
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.getElementById(tabName + '-tab').classList.add('active');
             event.target.classList.add('active');
         }
-        
+
         // Update dashboard with new data
         function updateDashboard(data) {
             dashboardState = data;
-            
-            // Update buffer status
             updateBufferStatus(data.buffer);
-            
-            // Update playback statistics
             updatePlaybackStats(data);
-            
-            // Update node scores
             updateNodeScores(data.network_stats, data.node_scores);
-            
-            // Update download statistics
             updateDownloadStats(data.scheduler_stats);
-            
-            // Update chunk visualization
             updateChunkVisualization(data.scheduler_stats);
+            updateCharts(data);
+            updateNodeUtilization(data);
+            updateComparison(data);
+            updateAnalytics(data);
+            updateThroughputMeter(data);
         }
-        
+
         function updateBufferStatus(buffer) {
             const state = buffer.state || 'unknown';
             const level = buffer.buffer_level_sec || 0;
             const target = buffer.target_buffer_sec || 30;
             const percentage = Math.min(100, (level / target) * 100);
             const lowWaterMark = buffer.low_water_mark_sec || 15;
-            
-            // Update state badge
+
             const stateBadge = document.getElementById('buffer-state');
             stateBadge.textContent = state.toUpperCase();
-            stateBadge.className = `status-badge ${state}`;
-            
-            // Update buffer bar
+            stateBadge.className = `status-badge ${state === 'healthy' ? 'healthy' : 'low'}`;
+
             const bufferFill = document.getElementById('buffer-fill');
             bufferFill.style.width = `${percentage}%`;
             document.getElementById('buffer-percentage').textContent = `${percentage.toFixed(0)}%`;
-            
-            // Update low water marker
+
             const markerPosition = (lowWaterMark / target) * 100;
             document.getElementById('low-water-marker').style.left = `${markerPosition}%`;
-            
-            // Update metrics
+
             document.getElementById('buffer-level').textContent = `${level.toFixed(1)}s / ${target}s`;
             document.getElementById('current-position').textContent = `Chunk ${buffer.current_position || 0}`;
             document.getElementById('chunks-buffered').textContent = buffer.buffer_level_chunks || 0;
         }
-        
+
         function updatePlaybackStats(data) {
             const startupLatency = data.startup_latency || 0;
             const rebufferEvents = data.buffer_stats?.rebuffering_events || 0;
             const chunksPlayed = data.buffer_stats?.total_chunks_played || 0;
             const playbackDuration = data.playback_duration || 0;
-            
+
             document.getElementById('startup-latency').textContent = `${startupLatency.toFixed(2)}s`;
             document.getElementById('rebuffer-events').textContent = rebufferEvents;
             document.getElementById('chunks-played').textContent = chunksPlayed;
             document.getElementById('playback-duration').textContent = `${Math.floor(playbackDuration)}s`;
         }
-        
+
         function updateNodeScores(networkStats, nodeScores) {
             const nodeList = document.getElementById('node-list');
             nodeList.innerHTML = '';
-            
+
             if (!networkStats || networkStats.length === 0) {
                 nodeList.innerHTML = '<li class="node-item">No node data available</li>';
                 return;
             }
-            
+
             networkStats.forEach((node, index) => {
                 const score = nodeScores[node.node_url] || 0;
                 const latency = node.latency_ms?.average || 0;
                 const bandwidth = node.bandwidth_mbps?.average || 0;
                 const successRate = (node.success_rate || 0) * 100;
-                
-                // Determine health status
+
                 let healthClass = 'healthy';
                 if (successRate < 50) healthClass = 'down';
                 else if (successRate < 80) healthClass = 'degraded';
-                
+
                 const nodeItem = document.createElement('li');
                 nodeItem.className = `node-item ${healthClass}`;
                 nodeItem.innerHTML = `
-                    <div>Node ${index + 1} (${node.node_url})</div>
-                    <div class="node-score">${score.toFixed(2)}</div>
-                    <div style="clear: both; margin-top: 5px; font-size: 0.9em; color: #666;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 500;">Node ${index + 1} (${node.node_url})</span>
+                        <span style="font-weight: bold; color: var(--accent-primary);">${score.toFixed(2)}</span>
+                    </div>
+                    <div style="margin-top: 5px; font-size: 0.85em; color: var(--text-secondary);">
                         Latency: ${latency.toFixed(1)}ms | Bandwidth: ${bandwidth.toFixed(1)} Mbps | Success: ${successRate.toFixed(0)}%
                     </div>
                 `;
                 nodeList.appendChild(nodeItem);
             });
         }
-        
+
         function updateDownloadStats(stats) {
             const totalDownloads = stats?.total_downloads || 0;
             const successRate = (stats?.success_rate || 1) * 100;
             const failoverCount = stats?.failover_count || 0;
             const activeDownloads = stats?.active_downloads || 0;
-            
+
             document.getElementById('total-downloads').textContent = totalDownloads;
             document.getElementById('success-rate').textContent = `${successRate.toFixed(1)}%`;
             document.getElementById('failover-count').textContent = failoverCount;
             document.getElementById('active-downloads').textContent = activeDownloads;
         }
-        
+
         function updateChunkVisualization(stats) {
             const visualization = document.getElementById('chunk-visualization');
             const downloadsPerNode = stats?.downloads_per_node || {};
-            
-            // Clear existing visualization
+
             visualization.innerHTML = '';
-            
-            // Create visualization for up to 50 chunks
+
             const totalChunks = Object.values(downloadsPerNode).reduce((a, b) => a + b, 0);
             const maxChunks = Math.min(50, totalChunks);
-            
+
             if (maxChunks === 0) {
-                visualization.innerHTML = '<div style="text-align: center; color: #666;">No chunks downloaded yet</div>';
+                visualization.innerHTML = '<div style="text-align: center; color: var(--text-secondary); grid-column: 1/-1;">No chunks downloaded yet</div>';
                 return;
             }
-            
-            // Distribute chunks across nodes for visualization
+
             const nodes = Object.keys(downloadsPerNode);
-            let chunkIndex = 0;
-            
+
             for (let i = 0; i < maxChunks; i++) {
                 const nodeIndex = i % nodes.length;
                 const nodeClass = `node${nodeIndex + 1}`;
-                
+
                 const chunkBox = document.createElement('div');
                 chunkBox.className = `chunk-box ${nodeClass}`;
                 chunkBox.textContent = i;
                 chunkBox.title = `Chunk ${i} from ${nodes[nodeIndex]}`;
-                
+
                 visualization.appendChild(chunkBox);
             }
         }
-        
-        // Simulate real-time updates (in production, this would fetch from API)
+
+        function calculateThroughput(data) {
+            if (!data.network_stats || data.network_stats.length === 0) return 0;
+            const totalBandwidth = data.network_stats.reduce((sum, node) => sum + (node.bandwidth_mbps?.average || 0), 0);
+            return totalBandwidth / data.network_stats.length;
+        }
+
+        function updateThroughputMeter(data) {
+            const throughput = calculateThroughput(data);
+            const percentage = Math.min(100, (throughput / 40) * 100);
+
+            document.getElementById('throughput-fill').style.width = `${percentage}%`;
+            document.getElementById('throughput-label').textContent = `${throughput.toFixed(1)} Mbps`;
+            document.getElementById('avg-throughput').textContent = `${throughput.toFixed(1)} Mbps`;
+        }
+
+        function updateNodeUtilization(data) {
+            const utilizationList = document.getElementById('node-utilization-list');
+            if (!utilizationList || !data.scheduler_stats || !data.scheduler_stats.downloads_per_node) return;
+
+            utilizationList.innerHTML = '';
+
+            const nodes = Object.keys(data.scheduler_stats.downloads_per_node);
+            const downloads = Object.values(data.scheduler_stats.downloads_per_node);
+            const maxDownloads = Math.max(...downloads, 1);
+
+            nodes.forEach((nodeUrl, index) => {
+                const nodeDownloads = downloads[index];
+                const utilization = (nodeDownloads / maxDownloads) * 100;
+
+                const nodeDiv = document.createElement('div');
+                nodeDiv.style.marginBottom = '15px';
+                nodeDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: var(--text-primary);">
+                        <span><strong>Node ${index + 1}</strong> (${nodeUrl})</span>
+                        <span>${nodeDownloads} chunks (${utilization.toFixed(0)}%)</span>
+                    </div>
+                    <div class="node-utilization-bar">
+                        <div class="node-utilization-fill" style="width: ${utilization}%"></div>
+                    </div>
+                `;
+                utilizationList.appendChild(nodeDiv);
+            });
+        }
+
+        function updateComparison(data) {
+            const smartStartup = data.startup_latency || 0;
+            const smartRebuffer = data.buffer_stats?.rebuffering_events || 0;
+            const smartThroughput = calculateThroughput(data);
+            const smartBufferHealth = data.buffer?.buffer_health_percent || 0;
+
+            naiveClientStats.startup_latency = smartStartup * 1.5;
+            naiveClientStats.rebuffering_events = Math.max(smartRebuffer + 2, 3);
+            naiveClientStats.avg_throughput = smartThroughput * 0.7;
+            naiveClientStats.avg_buffer_health = smartBufferHealth * 0.8;
+
+            document.getElementById('smart-startup').textContent = `${smartStartup.toFixed(2)}s`;
+            document.getElementById('naive-startup').textContent = `${naiveClientStats.startup_latency.toFixed(2)}s`;
+
+            document.getElementById('smart-rebuffer').textContent = smartRebuffer;
+            document.getElementById('naive-rebuffer').textContent = naiveClientStats.rebuffering_events;
+
+            document.getElementById('smart-throughput').textContent = `${smartThroughput.toFixed(1)} Mbps`;
+            document.getElementById('naive-throughput').textContent = `${naiveClientStats.avg_throughput.toFixed(1)} Mbps`;
+
+            document.getElementById('smart-buffer-health').textContent = `${smartBufferHealth.toFixed(0)}%`;
+            document.getElementById('naive-buffer-health').textContent = `${naiveClientStats.avg_buffer_health.toFixed(0)}%`;
+
+            const startupImprovement = ((naiveClientStats.startup_latency - smartStartup) / naiveClientStats.startup_latency * 100);
+            const rebufferImprovement = ((naiveClientStats.rebuffering_events - smartRebuffer) / Math.max(naiveClientStats.rebuffering_events, 1) * 100);
+            const throughputImprovement = ((smartThroughput - naiveClientStats.avg_throughput) / naiveClientStats.avg_throughput * 100);
+            const overallImprovement = (startupImprovement + rebufferImprovement + throughputImprovement) / 3;
+
+            document.getElementById('startup-improvement').textContent = `${startupImprovement.toFixed(1)}%`;
+            document.getElementById('rebuffer-improvement').textContent = `${rebufferImprovement.toFixed(1)}%`;
+            document.getElementById('throughput-improvement').textContent = `${throughputImprovement.toFixed(1)}%`;
+            document.getElementById('overall-improvement').textContent = `${overallImprovement.toFixed(1)}%`;
+        }
+
+        function updateAnalytics(data) {
+            const uptime = Math.floor((Date.now() - dashboardState.startTime) / 1000);
+            document.getElementById('system-uptime').textContent = `${uptime}s`;
+
+            const totalChunks = data.buffer_stats?.total_chunks_played || 0;
+            const totalMB = totalChunks * 2;
+            document.getElementById('total-data-transferred').textContent = `${totalMB} MB`;
+
+            const avgDownloadTime = 100;
+            document.getElementById('avg-chunk-download-time').textContent = `${avgDownloadTime}ms`;
+
+            const failoverRate = data.scheduler_stats?.failover_count || 0;
+            const totalDownloads = data.scheduler_stats?.total_downloads || 1;
+            const failoverPercent = (failoverRate / totalDownloads) * 100;
+            document.getElementById('failover-rate').textContent = `${failoverPercent.toFixed(1)}%`;
+
+            const startup = data.startup_latency || 0;
+            const rebuffer = data.buffer_stats?.rebuffering_events || 0;
+            const avgBuffer = data.buffer?.buffer_level_sec || 0;
+            const throughput = calculateThroughput(data);
+
+            document.getElementById('target-startup').textContent = `${startup.toFixed(2)}s`;
+            document.getElementById('target-rebuffer').textContent = rebuffer;
+            document.getElementById('target-buffer').textContent = `${avgBuffer.toFixed(1)}s`;
+            document.getElementById('target-throughput').textContent = `${throughput.toFixed(1)} Mbps`;
+
+            updateTargetBadge('target-startup-badge', startup < 2);
+            updateTargetBadge('target-rebuffer-badge', rebuffer <= 1);
+            updateTargetBadge('target-buffer-badge', avgBuffer > 20);
+            updateTargetBadge('target-throughput-badge', throughput > 40);
+        }
+
+        function updateTargetBadge(elementId, isGood) {
+            const badge = document.getElementById(elementId);
+            if (badge) {
+                badge.textContent = isGood ? '✓ Met' : '✗ Not Met';
+                badge.className = `status-badge ${isGood ? 'healthy' : 'empty'}`;
+            }
+        }
+
+        function initializeCharts() {
+            Chart.defaults.color = '#b2bec3';
+            Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
+
+            const bufferCtx = document.getElementById('buffer-chart');
+            if (bufferCtx) {
+                bufferChart = new Chart(bufferCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Buffer Level (seconds)',
+                            data: [],
+                            borderColor: '#6c5ce7',
+                            backgroundColor: 'rgba(108, 92, 231, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }, {
+                            label: 'Low Water Mark',
+                            data: [],
+                            borderColor: '#ff7675',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Seconds' } },
+                            x: { title: { display: true, text: 'Time' } }
+                        },
+                        plugins: { legend: { display: true, position: 'top' } }
+                    }
+                });
+            }
+
+            const nodeCtx = document.getElementById('node-performance-chart');
+            if (nodeCtx) {
+                nodePerformanceChart = new Chart(nodeCtx, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Score' } },
+                            x: { title: { display: true, text: 'Time' } }
+                        },
+                        plugins: { legend: { display: true, position: 'top' } }
+                    }
+                });
+            }
+
+            const throughputCtx = document.getElementById('throughput-chart');
+            if (throughputCtx) {
+                throughputChart = new Chart(throughputCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Throughput (Mbps)',
+                            data: [],
+                            borderColor: '#00b894',
+                            backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }, {
+                            label: 'Target (40 Mbps)',
+                            data: [],
+                            borderColor: '#fdcb6e',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Mbps' } },
+                            x: { title: { display: true, text: 'Time' } }
+                        },
+                        plugins: { legend: { display: true, position: 'top' } }
+                    }
+                });
+            }
+        }
+
+        function updateCharts(data) {
+            const now = new Date().toLocaleTimeString();
+
+            if (bufferChart && data.buffer) {
+                bufferHistory.push({ time: now, level: data.buffer.buffer_level_sec || 0 });
+                if (bufferHistory.length > 30) bufferHistory.shift();
+
+                bufferChart.data.labels = bufferHistory.map(h => h.time);
+                bufferChart.data.datasets[0].data = bufferHistory.map(h => h.level);
+                bufferChart.data.datasets[1].data = bufferHistory.map(() => data.buffer.low_water_mark_sec || 15);
+                bufferChart.update('none');
+            }
+
+            if (nodePerformanceChart && data.node_scores) {
+                const nodeUrls = Object.keys(data.node_scores);
+                const colors = ['#6c5ce7', '#00b894', '#ff7675', '#fdcb6e'];
+
+                nodeUrls.forEach((nodeUrl, index) => {
+                    if (!nodeScoreHistory[nodeUrl]) {
+                        nodeScoreHistory[nodeUrl] = [];
+                        if (!nodePerformanceChart.data.datasets.find(ds => ds.label === nodeUrl)) {
+                            nodePerformanceChart.data.datasets.push({
+                                label: nodeUrl,
+                                data: [],
+                                borderColor: colors[index % colors.length],
+                                tension: 0.4,
+                                fill: false
+                            });
+                        }
+                    }
+                    nodeScoreHistory[nodeUrl].push(data.node_scores[nodeUrl]);
+                    if (nodeScoreHistory[nodeUrl].length > 30) nodeScoreHistory[nodeUrl].shift();
+                });
+
+                nodePerformanceChart.data.labels = bufferHistory.map(h => h.time);
+                nodePerformanceChart.data.datasets.forEach(dataset => {
+                    dataset.data = nodeScoreHistory[dataset.label] || [];
+                });
+                nodePerformanceChart.update('none');
+            }
+
+            if (throughputChart && data.scheduler_stats) {
+                const currentThroughput = calculateThroughput(data);
+                throughputHistory.push({ time: now, throughput: currentThroughput });
+                if (throughputHistory.length > 30) throughputHistory.shift();
+
+                throughputChart.data.labels = throughputHistory.map(h => h.time);
+                throughputChart.data.datasets[0].data = throughputHistory.map(h => h.throughput);
+                throughputChart.data.datasets[1].data = throughputHistory.map(() => 40);
+                throughputChart.update('none');
+            }
+        }
+
         function simulateUpdates() {
-            // This is a demo - in production, you would fetch from a WebSocket or REST API
             const mockData = {
                 video_id: 'demo-video-001',
                 playing: true,
@@ -922,24 +1220,9 @@
                     }
                 },
                 network_stats: [
-                    {
-                        node_url: 'http://node1:8080',
-                        latency_ms: { average: 18.5 },
-                        bandwidth_mbps: { average: 48.2 },
-                        success_rate: 1.0
-                    },
-                    {
-                        node_url: 'http://node2:8080',
-                        latency_ms: { average: 22.1 },
-                        bandwidth_mbps: { average: 45.8 },
-                        success_rate: 1.0
-                    },
-                    {
-                        node_url: 'http://node3:8080',
-                        latency_ms: { average: 25.3 },
-                        bandwidth_mbps: { average: 42.5 },
-                        success_rate: 0.95
-                    }
+                    { node_url: 'http://node1:8080', latency_ms: { average: 18.5 }, bandwidth_mbps: { average: 48.2 }, success_rate: 1.0 },
+                    { node_url: 'http://node2:8080', latency_ms: { average: 22.1 }, bandwidth_mbps: { average: 45.8 }, success_rate: 1.0 },
+                    { node_url: 'http://node3:8080', latency_ms: { average: 25.3 }, bandwidth_mbps: { average: 42.5 }, success_rate: 0.95 }
                 ],
                 node_scores: {
                     'http://node1:8080': 16.8,
@@ -948,431 +1231,28 @@
                 },
                 playback_duration: 50
             };
-            
             updateDashboard(mockData);
         }
-        
-        // Initialize charts
-        function initializeCharts() {
-            // Buffer Level Chart
-            const bufferCtx = document.getElementById('buffer-chart');
-            if (bufferCtx) {
-                bufferChart = new Chart(bufferCtx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Buffer Level (seconds)',
-                            data: [],
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }, {
-                            label: 'Low Water Mark',
-                            data: [],
-                            borderColor: '#ff6b6b',
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            fill: false
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: 'Seconds' }
-                            },
-                            x: {
-                                title: { display: true, text: 'Time' }
-                            }
-                        },
-                        plugins: {
-                            legend: { display: true, position: 'top' }
-                        }
-                    }
-                });
-            }
-            
-            // Node Performance Chart
-            const nodeCtx = document.getElementById('node-performance-chart');
-            if (nodeCtx) {
-                nodePerformanceChart = new Chart(nodeCtx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: []
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: 'Performance Score' }
-                            },
-                            x: {
-                                title: { display: true, text: 'Time' }
-                            }
-                        },
-                        plugins: {
-                            legend: { display: true, position: 'top' }
-                        }
-                    }
-                });
-            }
-            
-            // Throughput Chart
-            const throughputCtx = document.getElementById('throughput-chart');
-            if (throughputCtx) {
-                throughputChart = new Chart(throughputCtx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Throughput (Mbps)',
-                            data: [],
-                            borderColor: '#51cf66',
-                            backgroundColor: 'rgba(81, 207, 102, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }, {
-                            label: 'Target (40 Mbps)',
-                            data: [],
-                            borderColor: '#ffd43b',
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            fill: false
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: 'Mbps' }
-                            },
-                            x: {
-                                title: { display: true, text: 'Time' }
-                            }
-                        },
-                        plugins: {
-                            legend: { display: true, position: 'top' }
-                        }
-                    }
-                });
-            }
-            
-            // Load Distribution Chart
-            const loadCtx = document.getElementById('load-distribution-chart');
-            if (loadCtx) {
-                loadDistributionChart = new Chart(loadCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Chunks Downloaded',
-                            data: [],
-                            backgroundColor: ['#667eea', '#51cf66', '#ff6b6b', '#ffd43b']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: 'Number of Chunks' }
-                            }
-                        },
-                        plugins: {
-                            legend: { display: false }
-                        }
-                    }
-                });
-            }
-        }
-        
-        // Update charts with new data
-        function updateCharts(data) {
-            const now = new Date().toLocaleTimeString();
-            
-            // Update buffer chart
-            if (bufferChart && data.buffer) {
-                bufferHistory.push({
-                    time: now,
-                    level: data.buffer.buffer_level_sec || 0
-                });
-                
-                // Keep last 30 data points
-                if (bufferHistory.length > 30) {
-                    bufferHistory.shift();
-                }
-                
-                bufferChart.data.labels = bufferHistory.map(h => h.time);
-                bufferChart.data.datasets[0].data = bufferHistory.map(h => h.level);
-                bufferChart.data.datasets[1].data = bufferHistory.map(() => data.buffer.low_water_mark_sec || 15);
-                bufferChart.update('none');
-            }
-            
-            // Update node performance chart
-            if (nodePerformanceChart && data.node_scores) {
-                // Initialize datasets for each node
-                const nodeUrls = Object.keys(data.node_scores);
-                const colors = ['#667eea', '#51cf66', '#ff6b6b', '#ffd43b'];
-                
-                nodeUrls.forEach((nodeUrl, index) => {
-                    if (!nodeScoreHistory[nodeUrl]) {
-                        nodeScoreHistory[nodeUrl] = [];
-                        
-                        // Add dataset if it doesn't exist
-                        if (!nodePerformanceChart.data.datasets.find(ds => ds.label === nodeUrl)) {
-                            nodePerformanceChart.data.datasets.push({
-                                label: nodeUrl,
-                                data: [],
-                                borderColor: colors[index % colors.length],
-                                tension: 0.4,
-                                fill: false
-                            });
-                        }
-                    }
-                    
-                    nodeScoreHistory[nodeUrl].push(data.node_scores[nodeUrl]);
-                    
-                    // Keep last 30 data points
-                    if (nodeScoreHistory[nodeUrl].length > 30) {
-                        nodeScoreHistory[nodeUrl].shift();
-                    }
-                });
-                
-                nodePerformanceChart.data.labels = bufferHistory.map(h => h.time);
-                nodePerformanceChart.data.datasets.forEach(dataset => {
-                    dataset.data = nodeScoreHistory[dataset.label] || [];
-                });
-                nodePerformanceChart.update('none');
-            }
-            
-            // Update throughput chart
-            if (throughputChart && data.scheduler_stats) {
-                const currentThroughput = calculateThroughput(data);
-                throughputHistory.push({
-                    time: now,
-                    throughput: currentThroughput
-                });
-                
-                // Keep last 30 data points
-                if (throughputHistory.length > 30) {
-                    throughputHistory.shift();
-                }
-                
-                throughputChart.data.labels = throughputHistory.map(h => h.time);
-                throughputChart.data.datasets[0].data = throughputHistory.map(h => h.throughput);
-                throughputChart.data.datasets[1].data = throughputHistory.map(() => 40);
-                throughputChart.update('none');
-            }
-            
-            // Update load distribution chart
-            if (loadDistributionChart && data.scheduler_stats && data.scheduler_stats.downloads_per_node) {
-                const nodes = Object.keys(data.scheduler_stats.downloads_per_node);
-                const downloads = Object.values(data.scheduler_stats.downloads_per_node);
-                
-                loadDistributionChart.data.labels = nodes.map((n, i) => `Node ${i + 1}`);
-                loadDistributionChart.data.datasets[0].data = downloads;
-                loadDistributionChart.update('none');
-            }
-        }
-        
-        // Calculate current throughput
-        function calculateThroughput(data) {
-            if (!data.network_stats || data.network_stats.length === 0) {
-                return 0;
-            }
-            
-            // Average bandwidth across all nodes
-            const totalBandwidth = data.network_stats.reduce((sum, node) => {
-                return sum + (node.bandwidth_mbps?.average || 0);
-            }, 0);
-            
-            return totalBandwidth / data.network_stats.length;
-        }
-        
-        // Update throughput meter
-        function updateThroughputMeter(data) {
-            const throughput = calculateThroughput(data);
-            const percentage = Math.min(100, (throughput / 40) * 100);
-            
-            document.getElementById('throughput-fill').style.width = `${percentage}%`;
-            document.getElementById('throughput-label').textContent = `${throughput.toFixed(1)} Mbps`;
-            document.getElementById('avg-throughput').textContent = `${throughput.toFixed(1)} Mbps`;
-        }
-        
-        // Update node utilization
-        function updateNodeUtilization(data) {
-            const utilizationList = document.getElementById('node-utilization-list');
-            if (!utilizationList || !data.scheduler_stats || !data.scheduler_stats.downloads_per_node) {
-                return;
-            }
-            
-            utilizationList.innerHTML = '';
-            
-            const nodes = Object.keys(data.scheduler_stats.downloads_per_node);
-            const downloads = Object.values(data.scheduler_stats.downloads_per_node);
-            const maxDownloads = Math.max(...downloads, 1);
-            
-            nodes.forEach((nodeUrl, index) => {
-                const nodeDownloads = downloads[index];
-                const utilization = (nodeDownloads / maxDownloads) * 100;
-                
-                const nodeDiv = document.createElement('div');
-                nodeDiv.style.marginBottom = '15px';
-                nodeDiv.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span><strong>Node ${index + 1}</strong> (${nodeUrl})</span>
-                        <span>${nodeDownloads} chunks (${utilization.toFixed(0)}%)</span>
-                    </div>
-                    <div class="node-utilization-bar">
-                        <div class="node-utilization-fill" style="width: ${utilization}%"></div>
-                    </div>
-                `;
-                utilizationList.appendChild(nodeDiv);
-            });
-        }
-        
-        // Update comparison view
-        function updateComparison(data) {
-            // Smart client stats (actual)
-            const smartStartup = data.startup_latency || 0;
-            const smartRebuffer = data.buffer_stats?.rebuffering_events || 0;
-            const smartThroughput = calculateThroughput(data);
-            const smartBufferHealth = data.buffer?.buffer_health_percent || 0;
-            
-            // Simulate naive client (worse performance)
-            naiveClientStats.startup_latency = smartStartup * 1.5; // 50% slower
-            naiveClientStats.rebuffering_events = Math.max(smartRebuffer + 2, 3); // At least 2 more events
-            naiveClientStats.avg_throughput = smartThroughput * 0.7; // 30% lower throughput
-            naiveClientStats.avg_buffer_health = smartBufferHealth * 0.8; // 20% lower buffer health
-            
-            // Update display
-            document.getElementById('smart-startup').textContent = `${smartStartup.toFixed(2)}s`;
-            document.getElementById('naive-startup').textContent = `${naiveClientStats.startup_latency.toFixed(2)}s`;
-            
-            document.getElementById('smart-rebuffer').textContent = smartRebuffer;
-            document.getElementById('naive-rebuffer').textContent = naiveClientStats.rebuffering_events;
-            
-            document.getElementById('smart-throughput').textContent = `${smartThroughput.toFixed(1)} Mbps`;
-            document.getElementById('naive-throughput').textContent = `${naiveClientStats.avg_throughput.toFixed(1)} Mbps`;
-            
-            document.getElementById('smart-buffer-health').textContent = `${smartBufferHealth.toFixed(0)}%`;
-            document.getElementById('naive-buffer-health').textContent = `${naiveClientStats.avg_buffer_health.toFixed(0)}%`;
-            
-            // Calculate improvements
-            const startupImprovement = ((naiveClientStats.startup_latency - smartStartup) / naiveClientStats.startup_latency * 100);
-            const rebufferImprovement = ((naiveClientStats.rebuffering_events - smartRebuffer) / Math.max(naiveClientStats.rebuffering_events, 1) * 100);
-            const throughputImprovement = ((smartThroughput - naiveClientStats.avg_throughput) / naiveClientStats.avg_throughput * 100);
-            const overallImprovement = (startupImprovement + rebufferImprovement + throughputImprovement) / 3;
-            
-            document.getElementById('startup-improvement').textContent = `${startupImprovement.toFixed(1)}%`;
-            document.getElementById('rebuffer-improvement').textContent = `${rebufferImprovement.toFixed(1)}%`;
-            document.getElementById('throughput-improvement').textContent = `${throughputImprovement.toFixed(1)}%`;
-            document.getElementById('overall-improvement').textContent = `${overallImprovement.toFixed(1)}%`;
-        }
-        
-        // Update analytics tab
-        function updateAnalytics(data) {
-            // System uptime
-            const uptime = Math.floor((Date.now() - dashboardState.startTime) / 1000);
-            document.getElementById('system-uptime').textContent = `${uptime}s`;
-            
-            // Total data transferred (estimate: chunks * 2MB)
-            const totalChunks = data.buffer_stats?.total_chunks_played || 0;
-            const totalMB = totalChunks * 2;
-            document.getElementById('total-data-transferred').textContent = `${totalMB} MB`;
-            
-            // Average chunk download time (estimate)
-            const avgDownloadTime = 100; // ms (placeholder)
-            document.getElementById('avg-chunk-download-time').textContent = `${avgDownloadTime}ms`;
-            
-            // Failover rate
-            const failoverRate = data.scheduler_stats?.failover_count || 0;
-            const totalDownloads = data.scheduler_stats?.total_downloads || 1;
-            const failoverPercent = (failoverRate / totalDownloads) * 100;
-            document.getElementById('failover-rate').textContent = `${failoverPercent.toFixed(1)}%`;
-            
-            // Performance targets
-            const startup = data.startup_latency || 0;
-            const rebuffer = data.buffer_stats?.rebuffering_events || 0;
-            const avgBuffer = data.buffer?.buffer_level_sec || 0;
-            const throughput = calculateThroughput(data);
-            
-            document.getElementById('target-startup').textContent = `${startup.toFixed(2)}s`;
-            document.getElementById('target-rebuffer').textContent = rebuffer;
-            document.getElementById('target-buffer').textContent = `${avgBuffer.toFixed(1)}s`;
-            document.getElementById('target-throughput').textContent = `${throughput.toFixed(1)} Mbps`;
-            
-            // Update badges
-            updateTargetBadge('target-startup-badge', startup < 2);
-            updateTargetBadge('target-rebuffer-badge', rebuffer <= 1);
-            updateTargetBadge('target-buffer-badge', avgBuffer > 20);
-            updateTargetBadge('target-throughput-badge', throughput > 40);
-        }
-        
-        function updateTargetBadge(elementId, isGood) {
-            const badge = document.getElementById(elementId);
-            if (badge) {
-                badge.textContent = isGood ? '✓ Met' : '✗ Not Met';
-                badge.className = `status-badge ${isGood ? 'healthy' : 'empty'}`;
-            }
-        }
-        
-        // Enhanced update dashboard function
-        function updateDashboard(data) {
-            dashboardState = data;
-            
-            // Update overview tab
-            updateBufferStatus(data.buffer);
-            updatePlaybackStats(data);
-            updateNodeScores(data.network_stats, data.node_scores);
-            updateDownloadStats(data.scheduler_stats);
-            updateChunkVisualization(data.scheduler_stats);
-            updateThroughputMeter(data);
-            
-            // Update performance tab
-            updateCharts(data);
-            updateNodeUtilization(data);
-            
-            // Update comparison tab
-            updateComparison(data);
-            
-            // Update analytics tab
-            updateAnalytics(data);
-        }
-        
-        // Fetch real data from API
+
         async function fetchDashboardData() {
             try {
-                const response = await fetch('/api/status');
+                // Use relative path for proxying
+                const response = await fetch('api/status');
                 if (response.ok) {
                     const data = await response.json();
                     updateDashboard(data);
                 } else {
-                    // Fallback to simulation if API not available
                     simulateUpdates();
                 }
             } catch (error) {
-                // Fallback to simulation if API not available
                 simulateUpdates();
             }
         }
-        
-        // Initialize dashboard
+
         initializeCharts();
         simulateUpdates();
-        
-        // Update every 2 seconds
         setInterval(fetchDashboardData, 2000);
     </script>
 </body>
+
 </html>

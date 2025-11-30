@@ -7,9 +7,11 @@ import asyncio
 import logging
 import sys
 import signal
+import argparse
 
 from main import SmartClient
 from dashboard_server import DashboardServer
+from config import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,13 +23,9 @@ logger = logging.getLogger(__name__)
 class IntegratedClient:
     """Runs smart client and dashboard server together."""
     
-    def __init__(self, metadata_service_url: str = "http://localhost:8080", dashboard_port: int = 8888):
+    def __init__(self, metadata_service_url: str = None, dashboard_port: int = None):
         """
         Initialize integrated client.
-        
-        Args:
-            metadata_service_url: URL of the metadata service
-            dashboard_port: Port for dashboard server
         """
         self.client = SmartClient(metadata_service_url)
         self.dashboard = DashboardServer(self.client, port=dashboard_port)
@@ -69,52 +67,55 @@ class IntegratedClient:
         while self.running and self.client.playing:
             await asyncio.sleep(10.0)
             
-            status = self.client.get_status()
-            
-            logger.info("="*60)
-            logger.info("STATUS UPDATE")
-            logger.info(f"Buffer: {status['buffer']['buffer_level_sec']:.1f}s / {status['buffer']['target_buffer_sec']}s")
-            logger.info(f"Chunks Played: {status['buffer_stats']['total_chunks_played']}")
-            logger.info(f"Rebuffering Events: {status['buffer_stats']['rebuffering_events']}")
-            logger.info(f"Downloads: {status['scheduler_stats']['total_downloads']} (Success: {status['scheduler_stats']['success_rate']*100:.1f}%)")
-            logger.info("="*60)
+            try:
+                status = self.client.get_status()
+                
+                logger.info("="*60)
+                logger.info("STATUS UPDATE")
+                logger.info(f"Buffer: {status['buffer']['buffer_level_sec']:.1f}s / {status['buffer']['target_buffer_sec']}s")
+                logger.info(f"Chunks Played: {status['buffer_stats']['total_chunks_played']}")
+                logger.info(f"Rebuffering Events: {status['buffer_stats']['rebuffering_events']}")
+                logger.info(f"Downloads: {status['scheduler_stats']['total_downloads']} (Success: {status['scheduler_stats']['success_rate']*100:.1f}%)")
+                logger.info("="*60)
+            except Exception as e:
+                logger.error(f"Error in status loop: {e}")
             
     async def stop(self):
         """Stop client and dashboard."""
         logger.info("Stopping client...")
         self.running = False
         await self.client.stop()
-        
-        if self.dashboard.collection_task:
-            self.dashboard.collection_task.cancel()
-            
+        await self.dashboard.stop()
         logger.info("Stopped")
 
 
 async def main():
     """Main entry point."""
-    # Get video ID from command line or use default
-    video_id = sys.argv[1] if len(sys.argv) > 1 else "test-video-001"
-    
-    # Get metadata service URL from environment or use default
-    import os
-    metadata_url = os.getenv('METADATA_SERVICE_URL', 'http://localhost:8080')
-    dashboard_port = int(os.getenv('DASHBOARD_PORT', '8888'))
+    parser = argparse.ArgumentParser(description="V-Stack Smart Client with Dashboard")
+    parser.add_argument("video_id", nargs="?", default="test-video-001", help="ID of the video to play")
+    parser.add_argument("--metadata-url", help="URL of the metadata service")
+    parser.add_argument("--port", type=int, help="Port for dashboard server")
+    args = parser.parse_args()
     
     # Create integrated client
-    integrated = IntegratedClient(metadata_url, dashboard_port)
+    integrated = IntegratedClient(
+        metadata_service_url=args.metadata_url,
+        dashboard_port=args.port
+    )
     
     # Setup signal handlers for graceful shutdown
-    def signal_handler(sig, frame):
+    loop = asyncio.get_running_loop()
+    
+    def signal_handler():
         logger.info("Received interrupt signal")
         asyncio.create_task(integrated.stop())
         
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
     
     try:
         # Start client and dashboard
-        success = await integrated.start(video_id)
+        success = await integrated.start(args.video_id)
         
         if success:
             # Print final statistics
@@ -124,19 +125,23 @@ async def main():
             integrated.client.print_status()
             
             # Print dashboard URL
-            logger.info(f"\nDashboard available at: http://localhost:{dashboard_port}")
+            port = args.port or config.DASHBOARD_PORT
+            logger.info(f"\nDashboard available at: http://localhost:{port}")
             logger.info("Press Ctrl+C to exit")
             
             # Keep dashboard running
             await asyncio.Event().wait()
             
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        await integrated.stop()
+    except asyncio.CancelledError:
+        pass
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
+    finally:
         await integrated.stop()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

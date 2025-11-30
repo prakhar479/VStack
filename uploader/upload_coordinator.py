@@ -36,6 +36,14 @@ class UploadCoordinator:
         """
         Register video with metadata service
         Requirements: 1.4
+        
+        Args:
+            video_id: Local video ID (will be replaced by server-assigned ID)
+            title: Video title
+            duration_sec: Video duration in seconds
+            
+        Returns:
+            dict: Server response containing the server-assigned video_id
         """
         client = await self._get_http_client()
         
@@ -44,14 +52,22 @@ class UploadCoordinator:
                 f"{self.metadata_service_url}/video",
                 json={
                     "title": title,
-                    "duration_sec": duration_sec
+                    "duration_sec": duration_sec,
+                    "client_video_id": video_id  # Include original ID for reference
                 }
             )
             response.raise_for_status()
             
             result = response.json()
-            logger.info(f"Video registered: {video_id} -> {result.get('video_id')}")
+            server_video_id = result.get('video_id')
             
+            if not server_video_id:
+                raise ValueError("No video_id returned from metadata service")
+                
+            logger.info(f"Video registered: {video_id} -> {server_video_id}")
+            
+            # Update the video_id in the result with the server-assigned ID
+            result['video_id'] = server_video_id
             return result
             
         except Exception as e:
@@ -303,15 +319,44 @@ class UploadCoordinator:
         Requirements: 1.5, 10.4
         """
         try:
-            # In a production system, we would:
-            # 1. Mark video as deleted in metadata service
-            # 2. Send cleanup requests to storage nodes
-            # 3. Remove partial chunk records
-            
             logger.info(f"Cleaning up failed upload for video {video_id}")
             
-            # For MVP, we just log the cleanup
-            # Storage nodes will handle orphaned chunks via garbage collection
+            client = await self._get_http_client()
+            
+            # 1. Try to get manifest to find chunks
+            try:
+                response = await client.get(f"{self.metadata_service_url}/manifest/{video_id}")
+                if response.status_code == 200:
+                    manifest = response.json()
+                    chunks = manifest.get("chunks", [])
+                    logger.info(f"Found {len(chunks)} chunks to clean up for {video_id}")
+                    
+                    # 2. Delete chunks from storage nodes
+                    # Note: This assumes storage nodes have DELETE /chunk/{chunk_id}
+                    for chunk in chunks:
+                        for replica in chunk.get("replicas", []):
+                            try:
+                                # replica is a URL like http://node:8081
+                                await client.delete(f"{replica}/chunk/{chunk['chunk_id']}")
+                                logger.debug(f"Deleted chunk {chunk['chunk_id']} from {replica}")
+                            except Exception as e:
+                                logger.warning(f"Failed to delete chunk {chunk['chunk_id']} from {replica}: {e}")
+                                
+            except Exception as e:
+                logger.warning(f"Could not retrieve manifest during cleanup: {e}")
+            
+            # 3. Request video deletion from metadata service
+            # Note: Metadata service needs to implement DELETE /video/{video_id}
+            try:
+                response = await client.delete(f"{self.metadata_service_url}/video/{video_id}")
+                if response.status_code == 200:
+                    logger.info(f"Deleted video record {video_id} from metadata service")
+                else:
+                    logger.warning(f"Metadata service returned {response.status_code} for video deletion")
+            except Exception as e:
+                logger.warning(f"Failed to delete video record from metadata service: {e}")
+            
+            logger.info(f"Cleanup attempt completed for video {video_id}")
             
         except Exception as e:
             logger.error(f"Cleanup failed for {video_id}: {e}")

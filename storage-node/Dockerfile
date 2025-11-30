@@ -1,10 +1,10 @@
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
-COPY storage-node/go.mod storage-node/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY storage-node/ .
+COPY . .
 RUN go build -o storage-node main.go
 
 FROM alpine:latest

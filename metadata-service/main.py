@@ -3,8 +3,10 @@
 Metadata Service - Coordination layer for V-Stack distributed video storage
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import uvicorn
 import os
 import sys
@@ -58,39 +60,69 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     global db_manager, consensus, health_monitor, redundancy_manager, redundancy_policy
     
-    # Startup
+    # STARTUP
     logger.info("Starting V-Stack Metadata Service...")
+    try:
+        # Initialize database
+        db_manager = DatabaseManager(db_path=os.getenv("DB_PATH", "./data/metadata.db"))
+        await db_manager.initialize()
+        logger.info("Database initialized")
+        
+        # Initialize consensus protocol
+        consensus = ChunkPaxos(db_manager)
+        await consensus.initialize()
+        logger.info("Consensus protocol initialized")
+        
+        # Initialize redundancy manager
+        popularity_threshold = int(os.getenv("POPULARITY_THRESHOLD", "1000"))
+        redundancy_manager = RedundancyManager(popularity_threshold=popularity_threshold)
+        redundancy_policy = RedundancyPolicy(redundancy_manager)
+        logger.info("Redundancy manager initialized")
+        
+        # Initialize and start health monitoring
+        health_monitor = HealthMonitor(db_manager)
+        await health_monitor.start_monitoring()
+        logger.info("Health monitor started")
+        
+        logger.info("Metadata Service startup complete")
+    except Exception as e:
+        logger.error(f"Failed to start Metadata Service: {e}")
+        raise
     
-    # Initialize database
-    db_manager = DatabaseManager()
-    await db_manager.initialize()
+    yield  # REQUIRED - separates startup from shutdown
     
-    # Initialize consensus protocol
-    consensus = ChunkPaxos(db_manager)
-    
-    # Initialize redundancy manager
-    popularity_threshold = int(os.getenv("POPULARITY_THRESHOLD", "1000"))
-    redundancy_manager = RedundancyManager(popularity_threshold=popularity_threshold)
-    redundancy_policy = RedundancyPolicy(redundancy_manager)
-    
-    # Initialize and start health monitoring
-    health_monitor = HealthMonitor(db_manager)
-    await health_monitor.start_monitoring()
-    
-    logger.info("Metadata Service started successfully")
-    
-    yield
-    
-    # Shutdown
+    # SHUTDOWN
     logger.info("Shutting down Metadata Service...")
-    if health_monitor:
-        await health_monitor.stop_monitoring()
-    logger.info("Metadata Service shutdown complete")
+    try:
+        if health_monitor:
+            await health_monitor.stop_monitoring()
+            logger.info("Health monitor stopped")
+        
+        if consensus:
+            await consensus.close()
+            logger.info("Consensus protocol closed")
+        
+        if db_manager:
+            await db_manager.close()
+            logger.info("Database closed")
+        
+        logger.info("Metadata Service shutdown complete")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
 
 app = FastAPI(
     title="V-Stack Metadata Service", 
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -148,6 +180,12 @@ async def create_video(request: CreateVideoRequest):
 @app.get("/videos")
 async def list_videos(limit: int = 100, offset: int = 0):
     """List all videos"""
+    # Validate pagination parameters
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 1000")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="Offset must be non-negative")
+        
     videos = await db_manager.list_videos(limit, offset)
     return videos
 
@@ -242,19 +280,28 @@ async def update_node_heartbeat(node_id: str, request: HeartbeatRequest):
     
     return {"status": "ok", "message": f"Heartbeat updated for node {node_id}"}
 
+class NodeRegistration(BaseModel):
+    node_url: str
+    node_id: str
+    version: str = "1.0.0"
+
 @app.post("/nodes/register")
-async def register_storage_node(node_url: str, node_id: str, version: str = "1.0.0"):
+async def register_storage_node(node_data: NodeRegistration):
     """Register a new storage node"""
+    # Validate URL format
+    if not node_data.node_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid node_url: must start with http:// or https://")
+        
     success = await db_manager.register_storage_node(
-        node_url=node_url,
-        node_id=node_id,
-        version=version
+        node_url=node_data.node_url,
+        node_id=node_data.node_id,
+        version=node_data.version
     )
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to register storage node")
     
-    return {"status": "registered", "node_id": node_id, "node_url": node_url}
+    return {"status": "registered", "node_id": node_data.node_id, "node_url": node_data.node_url}
 
 @app.get("/nodes/all")
 async def get_all_nodes():

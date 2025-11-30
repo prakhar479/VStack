@@ -72,8 +72,6 @@ class ErasureCoder:
         if padding_length > 0:
             chunk_data = chunk_data + b'\x00' * padding_length
         
-        # Store original size for later recovery
-        self._original_size = chunk_size
         
         # Split into data fragments
         data_fragments = []

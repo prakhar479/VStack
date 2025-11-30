@@ -10,6 +10,11 @@ import logging
 import random
 from typing import List, Dict, Optional, Set
 from collections import defaultdict
+from dotenv import load_dotenv
+
+from config import config
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,16 +26,15 @@ class ChunkScheduler:
     Supports parallel downloads with automatic failover.
     """
     
-    def __init__(self, network_monitor, max_concurrent_downloads: int = 4):
+    def __init__(self, network_monitor):
         """
         Initialize chunk scheduler.
         
         Args:
             network_monitor: NetworkMonitor instance for node performance data
-            max_concurrent_downloads: Maximum number of concurrent chunk downloads
         """
         self.network_monitor = network_monitor
-        self.max_concurrent_downloads = max_concurrent_downloads
+        self.max_concurrent_downloads = config.MAX_CONCURRENT_DOWNLOADS
         
         # Track active downloads to avoid overloading nodes
         self.active_downloads = {}  # chunk_id -> node_url
@@ -41,12 +45,17 @@ class ChunkScheduler:
         self.chunk_sources = {}  # chunk_id -> node_url (for visualization)
         
         # Semaphore to limit concurrent downloads
-        self.download_semaphore = asyncio.Semaphore(max_concurrent_downloads)
+        self.download_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
         
         # Statistics
         self.total_downloads = 0
         self.failed_downloads = 0
         self.failover_count = 0
+        self.session = None
+
+    def set_session(self, session: aiohttp.ClientSession):
+        """Set the shared aiohttp session."""
+        self.session = session
         
     def select_best_node(self, chunk_id: str, available_replicas: List[str]) -> Optional[str]:
         """
@@ -95,7 +104,7 @@ class ChunkScheduler:
         self, 
         chunk_id: str, 
         available_replicas: List[str],
-        retry_count: int = 3
+        retry_count: int = None
     ) -> Optional[bytes]:
         """
         Download a chunk with automatic failover and retry logic.
@@ -108,9 +117,21 @@ class ChunkScheduler:
         Returns:
             Chunk data as bytes or None if all attempts failed
         """
+        if retry_count is None:
+            retry_count = config.MAX_RETRIES
+
         async with self.download_semaphore:
             # Try each replica in order of preference
             attempted_nodes = set()
+            
+            # We want to try replicas until we succeed or run out of options
+            # But we also want to respect the retry count per replica
+            
+            # Strategy:
+            # 1. Select best node
+            # 2. Try to download
+            # 3. If fail, retry same node 'retry_count' times
+            # 4. If all retries fail, mark node as attempted and go to 1
             
             while len(attempted_nodes) < len(available_replicas):
                 # Select best available node that hasn't been tried yet
@@ -172,21 +193,23 @@ class ChunkScheduler:
         try:
             start_time = time.time()
             
-            timeout = aiohttp.ClientTimeout(total=30.0)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(f"{node_url}/chunk/{chunk_id}") as response:
-                    if response.status != 200:
-                        raise Exception(f"HTTP {response.status}")
-                        
-                    chunk_data = await response.read()
+            # Use shared session if available
+            if not self.session:
+                raise Exception("No session available for download")
+
+            async with self.session.get(f"{node_url}/chunk/{chunk_id}", timeout=config.DOWNLOAD_TIMEOUT) as response:
+                if response.status != 200:
+                    raise Exception(f"HTTP {response.status}")
                     
-                    # Calculate bandwidth
-                    download_time = time.time() - start_time
-                    if download_time > 0:
-                        bandwidth_mbps = (len(chunk_data) * 8) / (download_time * 1_000_000)
-                        self.network_monitor.update_bandwidth(node_url, bandwidth_mbps)
-                        
-                    return chunk_data
+                chunk_data = await response.read()
+                
+                # Calculate bandwidth
+                download_time = time.time() - start_time
+                if download_time > 0:
+                    bandwidth_mbps = (len(chunk_data) * 8) / (download_time * 1_000_000)
+                    self.network_monitor.update_bandwidth(node_url, bandwidth_mbps)
+                    
+                return chunk_data
                     
         finally:
             # Mark node as available
@@ -208,6 +231,7 @@ class ChunkScheduler:
     ) -> Dict[str, Optional[bytes]]:
         """
         Download multiple chunks in parallel with intelligent scheduling.
+        Uses a worker pool to prevent task explosion.
         
         Args:
             chunks_to_download: List of dicts with 'chunk_id' and 'replicas' keys
@@ -215,27 +239,40 @@ class ChunkScheduler:
         Returns:
             Dictionary mapping chunk_id to chunk data (or None if failed)
         """
-        # Create download tasks
-        tasks = []
-        for chunk_info in chunks_to_download:
-            chunk_id = chunk_info['chunk_id']
-            replicas = chunk_info['replicas']
-            
-            task = asyncio.create_task(
-                self.download_chunk(chunk_id, replicas)
-            )
-            tasks.append((chunk_id, task))
-            
-        # Wait for all downloads to complete
         results = {}
-        for chunk_id, task in tasks:
-            try:
-                chunk_data = await task
-                results[chunk_id] = chunk_data
-            except Exception as e:
-                logger.error(f"Error downloading chunk {chunk_id}: {e}")
-                results[chunk_id] = None
+        queue = asyncio.Queue()
+        
+        # Populate queue
+        for chunk_info in chunks_to_download:
+            queue.put_nowait(chunk_info)
+            
+        async def worker():
+            while True:
+                try:
+                    chunk_info = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                    
+                chunk_id = chunk_info['chunk_id']
+                replicas = chunk_info['replicas']
                 
+                try:
+                    chunk_data = await self.download_chunk(chunk_id, replicas)
+                    results[chunk_id] = chunk_data
+                except Exception as e:
+                    logger.error(f"Error downloading chunk {chunk_id}: {e}")
+                    results[chunk_id] = None
+                finally:
+                    queue.task_done()
+        
+        # Create worker tasks
+        # Limit workers to max_concurrent_downloads
+        num_workers = min(len(chunks_to_download), self.max_concurrent_downloads)
+        workers = [asyncio.create_task(worker()) for _ in range(num_workers)]
+        
+        # Wait for all workers to complete
+        await asyncio.gather(*workers)
+        
         return results
         
     def get_chunk_source(self, chunk_id: str) -> Optional[str]:

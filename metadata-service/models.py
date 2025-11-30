@@ -3,10 +3,15 @@
 Pydantic models for V-Stack Metadata Service
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+
+# Constants
+DEFAULT_CHUNK_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
+MAX_CHUNK_SIZE_BYTES = 10 * 1024 * 1024     # 10MB
+MIN_CHUNK_SIZE_BYTES = 512 * 1024           # 512KB
 
 class VideoStatus(str, Enum):
     UPLOADING = "uploading"
@@ -43,7 +48,7 @@ class VideoInfo(BaseModel):
     title: str
     duration_sec: int
     total_chunks: int
-    chunk_size_bytes: int = 2097152
+    chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES
     created_at: str
     status: VideoStatus
 
@@ -66,7 +71,7 @@ class VideoManifest(BaseModel):
     duration_sec: int
     total_chunks: int
     chunk_duration_sec: int = 10
-    chunk_size_bytes: int = 2097152
+    chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES
     created_at: str
     status: VideoStatus
     chunks: List[ChunkInfo]
@@ -87,7 +92,16 @@ class HeartbeatRequest(BaseModel):
 
 class ChunkCommitRequest(BaseModel):
     node_urls: List[str] = Field(..., min_length=1)
-    checksum: str = Field(..., min_length=64, max_length=64)  # SHA-256 hex
+    checksum: str = Field(..., min_length=64, max_length=64, pattern="^[a-f0-9]{64}$")  # SHA-256 hex
+    
+    @field_validator('checksum', mode='after')
+    @classmethod
+    def validate_checksum_hex(cls, v):
+        try:
+            int(v, 16)  # Verify it's valid hex
+        except ValueError:
+            raise ValueError("Checksum must be valid hexadecimal")
+        return v.lower()  # Normalize to lowercase
     size_bytes: int = Field(..., gt=0)
     video_id: str = Field(..., min_length=1)
     sequence_num: int = Field(..., ge=0)

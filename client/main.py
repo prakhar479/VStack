@@ -10,26 +10,18 @@ import logging
 import json
 import sys
 import os
+import argparse
 from typing import List, Dict, Optional
 
-# Add parent directory to path for shared config
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path for shared config if needed, but prefer relative imports or package structure
+# sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from network_monitor import NetworkMonitor
 from scheduler import ChunkScheduler
 from buffer_manager import BufferManager
+from config import config
 
-try:
-    from config import SmartClientConfig, validate_config
-    config = SmartClientConfig.from_env()
-    if not validate_config(config):
-        logger.error("Configuration validation failed!")
-        sys.exit(1)
-except ImportError:
-    # Fallback configuration
-    logging.basicConfig(level=logging.INFO)
-    config = None
-
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -39,20 +31,15 @@ class SmartClient:
     Implements the core novelty of adaptive chunk scheduling based on real-time network conditions.
     """
     
-    def __init__(self, metadata_service_url: str = "http://localhost:8080"):
-        self.metadata_url = metadata_service_url
+    def __init__(self, metadata_service_url: str = None):
+        self.metadata_url = metadata_service_url or config.METADATA_SERVICE_URL
         self.video_id = None
         self.manifest = None
         
         # Core components
-        self.network_monitor = NetworkMonitor(ping_interval=3.0, history_size=10)
-        self.scheduler = ChunkScheduler(self.network_monitor, max_concurrent_downloads=4)
-        self.buffer_manager = BufferManager(
-            target_buffer_sec=30,
-            low_water_mark_sec=15,
-            chunk_duration_sec=10,
-            start_playback_sec=10
-        )
+        self.network_monitor = NetworkMonitor()
+        self.scheduler = ChunkScheduler(self.network_monitor)
+        self.buffer_manager = BufferManager()
         
         # Playback state
         self.playing = False
@@ -62,17 +49,21 @@ class SmartClient:
         # Statistics
         self.startup_latency = None
         self.playback_start_time = None
+        self.session = None
         
     async def initialize(self):
         """Initialize client and test connection to metadata service."""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.metadata_url}/health") as response:
-                    if response.status == 200:
-                        logger.info("Connected to metadata service")
-                        return True
+            self.session = aiohttp.ClientSession()
+            async with self.session.get(f"{self.metadata_url}/health") as response:
+                if response.status == 200:
+                    logger.info("Connected to metadata service")
+                    return True
         except Exception as e:
             logger.error(f"Failed to connect to metadata service: {e}")
+            if self.session:
+                await self.session.close()
+                self.session = None
             return False
             
     async def fetch_manifest(self, video_id: str) -> Optional[Dict]:
@@ -86,15 +77,18 @@ class SmartClient:
             Video manifest dictionary or None if failed
         """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.metadata_url}/manifest/{video_id}") as response:
-                    if response.status == 200:
-                        manifest = await response.json()
-                        logger.info(f"Fetched manifest for video {video_id}: {manifest.get('total_chunks', 0)} chunks")
-                        return manifest
-                    else:
-                        logger.error(f"Failed to fetch manifest: HTTP {response.status}")
-                        return None
+            if not self.session:
+                logger.error("Client not initialized")
+                return None
+
+            async with self.session.get(f"{self.metadata_url}/manifest/{video_id}") as response:
+                if response.status == 200:
+                    manifest = await response.json()
+                    logger.info(f"Fetched manifest for video {video_id}: {manifest.get('total_chunks', 0)} chunks")
+                    return manifest
+                else:
+                    logger.error(f"Failed to fetch manifest: HTTP {response.status}")
+                    return None
         except Exception as e:
             logger.error(f"Error fetching manifest: {e}")
             return None
@@ -136,7 +130,8 @@ class SmartClient:
             return
             
         logger.info(f"Starting network monitoring for {len(storage_nodes)} nodes")
-        await self.network_monitor.start_monitoring(storage_nodes)
+        await self.network_monitor.start_monitoring(storage_nodes, self.session)
+        self.scheduler.set_session(self.session)
         
         # Wait a moment for initial network measurements
         await asyncio.sleep(1.0)
@@ -146,10 +141,9 @@ class SmartClient:
         self.download_task = asyncio.create_task(self._download_loop())
         self.playback_task = asyncio.create_task(self._playback_loop())
         
-        # Wait for initial buffer to fill
+        # Wait for playback to start
         logger.info("Buffering initial chunks...")
-        while not self.buffer_manager.can_start_playback() and self.playing:
-            await asyncio.sleep(0.1)
+        await self.buffer_manager.wait_for_playback_ready()
             
         self.startup_latency = time.time() - init_start_time
         self.playback_start_time = time.time()
@@ -187,6 +181,8 @@ class SmartClient:
                         chunk_info = self._get_chunk_info(seq_num)
                         if chunk_info:
                             download_list.append(chunk_info)
+                        elif seq_num < self.manifest.get('total_chunks', 0):
+                            logger.warning(f"Could not find info for chunk sequence {seq_num}")
                             
                     if download_list:
                         logger.debug(f"Downloading {len(download_list)} chunks")
@@ -202,8 +198,13 @@ class SmartClient:
                                 if seq_num is not None:
                                     self.buffer_manager.add_chunk(chunk_id, seq_num, chunk_data)
                                     
-                # Sleep briefly before checking again
-                await asyncio.sleep(0.5)
+                # Wait for buffer update or timeout
+                # If buffer is full, we wait until some is consumed
+                # If buffer is low, we loop immediately (after small sleep to prevent tight loop if download fails)
+                if not self.buffer_manager.needs_more_chunks():
+                     await self.buffer_manager.wait_for_buffer(timeout=1.0)
+                else:
+                     await asyncio.sleep(0.5)
                 
             except asyncio.CancelledError:
                 break
@@ -220,9 +221,8 @@ class SmartClient:
         while self.playing:
             try:
                 # Wait until buffer has content
-                if not self.buffer_manager.can_start_playback():
-                    await asyncio.sleep(0.1)
-                    continue
+                if not self.buffer_manager.can_start_playback() and not self.buffer_manager.playback_started:
+                    await self.buffer_manager.wait_for_playback_ready()
                     
                 # Get next chunk for playback
                 chunk = self.buffer_manager.get_next_chunk_for_playback()
@@ -245,7 +245,7 @@ class SmartClient:
                 else:
                     # Buffer underrun - wait for more chunks
                     logger.warning("Buffer underrun, waiting for chunks...")
-                    await asyncio.sleep(0.5)
+                    await self.buffer_manager.wait_for_buffer(timeout=1.0)
                     
             except asyncio.CancelledError:
                 break
@@ -271,6 +271,13 @@ class SmartClient:
         
     def _extract_sequence_number(self, chunk_id: str) -> Optional[int]:
         """Extract sequence number from chunk ID."""
+        # Try to find in manifest first (more robust)
+        if self.manifest:
+            for chunk in self.manifest.get('chunks', []):
+                if chunk['chunk_id'] == chunk_id:
+                    return chunk.get('sequence_num')
+
+        # Fallback to parsing string
         # Assuming chunk_id format: "video_id-chunk-XXX"
         try:
             parts = chunk_id.split('-chunk-')
@@ -279,12 +286,6 @@ class SmartClient:
         except:
             pass
             
-        # Try to find in manifest
-        if self.manifest:
-            for chunk in self.manifest.get('chunks', []):
-                if chunk['chunk_id'] == chunk_id:
-                    return chunk.get('sequence_num')
-                    
         return None
         
     async def stop(self):
@@ -300,6 +301,14 @@ class SmartClient:
             
         # Stop monitoring
         await self.network_monitor.stop_monitoring()
+        
+        # Close session
+        if self.session:
+            await self.session.close()
+            self.session = None
+            
+        # Reset buffer
+        self.buffer_manager.reset()
         
         logger.info("Playback stopped")
         
@@ -358,9 +367,12 @@ class SmartClient:
 
 async def main():
     """Main entry point for smart client."""
-    import sys
+    parser = argparse.ArgumentParser(description="V-Stack Smart Client")
+    parser.add_argument("video_id", nargs="?", default="test-video-001", help="ID of the video to play")
+    parser.add_argument("--metadata-url", help="URL of the metadata service")
+    args = parser.parse_args()
     
-    client = SmartClient()
+    client = SmartClient(metadata_service_url=args.metadata_url)
     
     if not await client.initialize():
         logger.error("Failed to initialize Smart Client")
@@ -368,12 +380,9 @@ async def main():
         
     logger.info("Smart Client initialized successfully")
     
-    # Get video ID from command line or use default
-    video_id = sys.argv[1] if len(sys.argv) > 1 else "test-video-001"
-    
     try:
         # Start playback
-        playback_task = asyncio.create_task(client.play_video(video_id))
+        playback_task = asyncio.create_task(client.play_video(args.video_id))
         
         # Print status periodically
         while client.playing:

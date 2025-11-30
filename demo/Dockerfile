@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip install --no-cache-dir aiohttp aiofiles
+RUN pip install --no-cache-dir aiohttp aiofiles python-dotenv
 
 # Copy demo files
 COPY demo/ .

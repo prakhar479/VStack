@@ -12,6 +12,8 @@ import logging
 import json
 from typing import List, Dict, Tuple
 import ffmpeg
+import aiofiles
+
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +81,12 @@ class VideoProcessor:
             if not video_stream:
                 raise ValueError("No video stream found in file")
             
-            # Extract duration
+            # Extract duration (ensure at least 1 second for metadata service validation)
             duration_sec = float(probe['format'].get('duration', 0))
+            duration_sec = max(1, int(duration_sec))
             
             metadata = {
-                'duration_sec': int(duration_sec),
+                'duration_sec': duration_sec,
                 'format': probe['format'].get('format_name', 'unknown'),
                 'size_bytes': int(probe['format'].get('size', 0)),
                 'bitrate': int(probe['format'].get('bit_rate', 0)),
@@ -175,11 +178,12 @@ class VideoProcessor:
             try:
                 # Read chunk data
                 async with asyncio.Lock():
-                    with open(chunk_file, 'rb') as f:
-                        chunk_data = f.read()
+                    async with aiofiles.open(chunk_file, 'rb') as f:
+                        chunk_data = await f.read()
                 
                 # Compute SHA-256 checksum for integrity
-                checksum = hashlib.sha256(chunk_data).hexdigest()
+                # Run CPU-bound task in thread pool to avoid blocking event loop
+                checksum = await asyncio.to_thread(self._compute_checksum, chunk_data)
                 
                 # Create chunk object
                 chunk_id = f"{video_id}-chunk-{i:03d}"
@@ -201,6 +205,10 @@ class VideoProcessor:
                 raise
         
         return chunks
+
+    def _compute_checksum(self, data: bytes) -> str:
+        """Compute SHA-256 checksum (CPU bound)"""
+        return hashlib.sha256(data).hexdigest()
     
     async def cleanup(self, video_id: str):
         """

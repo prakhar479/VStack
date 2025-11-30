@@ -11,6 +11,8 @@ import logging
 from typing import List, Dict, Optional
 from collections import defaultdict, deque
 
+from config import config
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -21,20 +23,16 @@ class NetworkMonitor:
     Tracks latency, bandwidth, and success rates using exponentially weighted moving averages.
     """
     
-    def __init__(self, ping_interval: float = 3.0, history_size: int = 10):
+    def __init__(self):
         """
         Initialize network monitor.
-        
-        Args:
-            ping_interval: Seconds between ping cycles (default: 3.0)
-            history_size: Number of recent measurements to keep (default: 10)
         """
-        self.ping_interval = ping_interval
-        self.history_size = history_size
+        self.ping_interval = config.PING_INTERVAL
+        self.history_size = config.HISTORY_SIZE
         
         # Store recent measurements for each node
-        self.latencies = defaultdict(lambda: deque(maxlen=history_size))
-        self.bandwidths = defaultdict(lambda: deque(maxlen=history_size))
+        self.latencies = defaultdict(lambda: deque(maxlen=self.history_size))
+        self.bandwidths = defaultdict(lambda: deque(maxlen=self.history_size))
         self.success_rates = defaultdict(lambda: deque(maxlen=20))  # More samples for reliability
         
         # Track last update time for each node
@@ -44,19 +42,22 @@ class NetworkMonitor:
         self.monitoring = False
         self.node_urls = []
         self.monitor_task = None
+        self.session = None
         
-    async def start_monitoring(self, node_urls: List[str]):
+    async def start_monitoring(self, node_urls: List[str], session: aiohttp.ClientSession):
         """
         Start background network monitoring for given nodes.
         
         Args:
             node_urls: List of storage node URLs to monitor
+            session: Shared aiohttp ClientSession
         """
         if self.monitoring:
             logger.warning("Monitoring already started")
             return
             
         self.node_urls = node_urls
+        self.session = session
         self.monitoring = True
         
         logger.info(f"Starting network monitoring for {len(node_urls)} nodes")
@@ -70,6 +71,7 @@ class NetworkMonitor:
             return
             
         self.monitoring = False
+        self.session = None
         
         if self.monitor_task:
             self.monitor_task.cancel()
@@ -107,25 +109,28 @@ class NetworkMonitor:
         start_time = time.time()
         
         try:
-            timeout = aiohttp.ClientTimeout(total=5.0)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.head(f"{node_url}/ping") as response:
-                    # Calculate latency in milliseconds
-                    latency = (time.time() - start_time) * 1000
-                    
-                    # Record successful ping
-                    self.latencies[node_url].append(latency)
-                    self.success_rates[node_url].append(1.0)
-                    self.last_update[node_url] = time.time()
-                    
-                    # Extract bandwidth info from headers if available
-                    # For now, we'll estimate bandwidth based on successful responses
-                    # In a real implementation, this would be measured during chunk downloads
-                    if not self.bandwidths[node_url]:
-                        # Initialize with a default estimate
-                        self.bandwidths[node_url].append(50.0)  # 50 Mbps default
-                    
-                    logger.debug(f"Ping {node_url}: {latency:.2f}ms")
+            # Use shared session if available
+            if not self.session:
+                logger.warning("No session available for ping")
+                return
+
+            async with self.session.head(f"{node_url}/ping", timeout=config.PING_TIMEOUT) as response:
+                # Calculate latency in milliseconds
+                latency = (time.time() - start_time) * 1000
+                
+                # Record successful ping
+                self.latencies[node_url].append(latency)
+                self.success_rates[node_url].append(1.0)
+                self.last_update[node_url] = time.time()
+                
+                # Extract bandwidth info from headers if available
+                # For now, we'll estimate bandwidth based on successful responses
+                # In a real implementation, this would be measured during chunk downloads
+                if not self.bandwidths[node_url]:
+                    # Initialize with a default estimate
+                    self.bandwidths[node_url].append(50.0)  # 50 Mbps default
+                
+                logger.debug(f"Ping {node_url}: {latency:.2f}ms")
                     
         except asyncio.TimeoutError:
             self.success_rates[node_url].append(0.0)
@@ -162,25 +167,28 @@ class NetworkMonitor:
         if not self.latencies[node_url]:
             return 0.0
             
-        # Calculate average latency (ms)
-        avg_latency = statistics.mean(self.latencies[node_url])
-        
-        # Calculate average bandwidth (Mbps)
-        if self.bandwidths[node_url]:
-            avg_bandwidth = statistics.mean(self.bandwidths[node_url])
-        else:
-            avg_bandwidth = 50.0  # Default estimate
+        try:
+            # Calculate average latency (ms)
+            avg_latency = statistics.mean(self.latencies[node_url])
             
-        # Calculate success rate (reliability)
-        if self.success_rates[node_url]:
-            success_rate = statistics.mean(self.success_rates[node_url])
-        else:
-            success_rate = 0.0
+            # Calculate average bandwidth (Mbps)
+            if self.bandwidths[node_url]:
+                avg_bandwidth = statistics.mean(self.bandwidths[node_url])
+            else:
+                avg_bandwidth = 50.0  # Default estimate
+                
+            # Calculate success rate (reliability)
+            if self.success_rates[node_url]:
+                success_rate = statistics.mean(self.success_rates[node_url])
+            else:
+                success_rate = 0.0
+                
+            # Apply exact scoring formula from requirements
+            score = (avg_bandwidth * success_rate) / (1 + avg_latency * 0.1)
             
-        # Apply exact scoring formula from requirements
-        score = (avg_bandwidth * success_rate) / (1 + avg_latency * 0.1)
-        
-        return score
+            return score
+        except statistics.StatisticsError:
+            return 0.0
         
     def get_all_node_scores(self) -> Dict[str, float]:
         """
@@ -204,25 +212,28 @@ class NetworkMonitor:
         if not self.latencies[node_url]:
             return None
             
-        stats = {
-            'node_url': node_url,
-            'latency_ms': {
-                'current': self.latencies[node_url][-1] if self.latencies[node_url] else None,
-                'average': statistics.mean(self.latencies[node_url]) if self.latencies[node_url] else None,
-                'min': min(self.latencies[node_url]) if self.latencies[node_url] else None,
-                'max': max(self.latencies[node_url]) if self.latencies[node_url] else None,
-            },
-            'bandwidth_mbps': {
-                'current': self.bandwidths[node_url][-1] if self.bandwidths[node_url] else None,
-                'average': statistics.mean(self.bandwidths[node_url]) if self.bandwidths[node_url] else None,
-            },
-            'success_rate': statistics.mean(self.success_rates[node_url]) if self.success_rates[node_url] else 0.0,
-            'score': self.get_node_score(node_url),
-            'last_update': self.last_update.get(node_url, 0),
-            'measurements_count': len(self.latencies[node_url])
-        }
-        
-        return stats
+        try:
+            stats = {
+                'node_url': node_url,
+                'latency_ms': {
+                    'current': self.latencies[node_url][-1] if self.latencies[node_url] else None,
+                    'average': statistics.mean(self.latencies[node_url]) if self.latencies[node_url] else None,
+                    'min': min(self.latencies[node_url]) if self.latencies[node_url] else None,
+                    'max': max(self.latencies[node_url]) if self.latencies[node_url] else None,
+                },
+                'bandwidth_mbps': {
+                    'current': self.bandwidths[node_url][-1] if self.bandwidths[node_url] else None,
+                    'average': statistics.mean(self.bandwidths[node_url]) if self.bandwidths[node_url] else None,
+                },
+                'success_rate': statistics.mean(self.success_rates[node_url]) if self.success_rates[node_url] else 0.0,
+                'score': self.get_node_score(node_url),
+                'last_update': self.last_update.get(node_url, 0),
+                'measurements_count': len(self.latencies[node_url])
+            }
+            
+            return stats
+        except statistics.StatisticsError:
+            return None
         
     def get_all_stats(self) -> List[Dict]:
         """
@@ -234,7 +245,7 @@ class NetworkMonitor:
         return [self.get_node_stats(node_url) for node_url in self.node_urls 
                 if self.get_node_stats(node_url) is not None]
         
-    def is_node_healthy(self, node_url: str, timeout_sec: float = 30.0) -> bool:
+    def is_node_healthy(self, node_url: str, timeout_sec: float = None) -> bool:
         """
         Check if a node is considered healthy based on recent measurements.
         
@@ -245,15 +256,32 @@ class NetworkMonitor:
         Returns:
             True if node is healthy, False otherwise
         """
+        if timeout_sec is None:
+            timeout_sec = config.NODE_HEALTH_TIMEOUT
+
         # Check if we have recent data
         last_seen = self.last_update.get(node_url, 0)
+        
+        # If never seen, check if we've been monitoring long enough to expect a ping
+        if last_seen == 0:
+            # If we just started, give it a chance
+            if not self.monitoring:
+                return False # Not monitoring, so unknown/unhealthy
+            # If we've been monitoring longer than ping interval + buffer, and no ping, then unhealthy
+            # But here we don't track start time easily. 
+            # Simplification: if no data, assume unhealthy unless we have no nodes at all
+            return False
+
         if time.time() - last_seen > timeout_sec:
             return False
             
         # Check success rate
         if self.success_rates[node_url]:
-            recent_success_rate = statistics.mean(list(self.success_rates[node_url])[-5:])
-            return recent_success_rate > 0.5  # At least 50% success rate
+            try:
+                recent_success_rate = statistics.mean(list(self.success_rates[node_url])[-5:])
+                return recent_success_rate > 0.5  # At least 50% success rate
+            except statistics.StatisticsError:
+                return False
             
         return False
         
