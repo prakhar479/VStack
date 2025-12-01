@@ -154,6 +154,81 @@ class SmartClient:
             await asyncio.gather(self.download_task, self.playback_task)
         except asyncio.CancelledError:
             logger.info("Playback cancelled")
+
+    async def start_stream(self, video_id: str):
+        """
+        Start streaming mode (download only, external consumption).
+        """
+        # Reset state but ensure session is available
+        if self.playing:
+            self.playing = False
+            if self.download_task:
+                self.download_task.cancel()
+            if self.playback_task:
+                self.playback_task.cancel()
+            await self.network_monitor.stop_monitoring()
+            self.buffer_manager.reset()
+            
+        # Ensure session exists
+        if not self.session:
+            import aiohttp
+            self.session = aiohttp.ClientSession()
+        
+        # Fetch manifest
+        self.video_id = video_id
+        self.manifest = await self.fetch_manifest(video_id)
+        
+        if not self.manifest:
+            logger.error("Cannot play video without manifest")
+            return False
+            
+        # Start network monitoring
+        storage_nodes = self.get_all_storage_nodes()
+        if not storage_nodes:
+            logger.error("No storage nodes found in manifest")
+            return False
+            
+        logger.info(f"Starting stream for {video_id}")
+        await self.network_monitor.start_monitoring(storage_nodes, self.session)
+        self.scheduler.set_session(self.session)
+        
+        # Start download task only
+        self.playing = True
+        self.download_task = asyncio.create_task(self._download_loop())
+        return True
+
+    async def get_stream_chunk(self) -> Optional[bytes]:
+        """
+        Get next chunk data for streaming.
+        Waits for buffer if necessary.
+        Returns None if end of stream.
+        """
+        if not self.playing:
+            return None
+
+        # Wait for buffer if needed
+        if not self.buffer_manager.can_start_playback() and not self.buffer_manager.playback_started:
+            await self.buffer_manager.wait_for_playback_ready()
+
+        # Try to get next chunk
+        while self.playing:
+            chunk = self.buffer_manager.get_next_chunk_for_playback()
+            if chunk:
+                self.buffer_manager.record_buffer_level()
+                
+                # Check for end of stream
+                if chunk.sequence_num >= self.manifest.get('total_chunks', 0) - 1:
+                    logger.info("End of stream reached")
+                    # We don't stop immediately, we return the last chunk
+                    # The caller will stop after processing
+                    pass
+                    
+                return chunk.data
+            
+            # Wait for more data
+            await self.buffer_manager.wait_for_buffer(timeout=0.5)
+            
+        return None
             
     async def _download_loop(self):
         """Background task that downloads chunks to maintain buffer."""

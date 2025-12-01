@@ -101,6 +101,7 @@ class DashboardServer:
         self.app.router.add_get('/health', self.handle_health)
         self.app.router.add_get('/api/status', self.handle_status)
         self.app.router.add_get('/api/history', self.handle_history)
+        self.app.router.add_get('/api/stream/{video_id}', self.handle_stream)
         self.app.router.add_post('/api/control', self.handle_control)
             
     async def start(self):
@@ -243,3 +244,57 @@ class DashboardServer:
         except Exception as e:
             logger.error(f"Error handling control command: {e}", exc_info=True)
             return web.json_response({'error': 'Internal server error'}, status=500)
+
+    async def handle_stream(self, request):
+        """
+        Stream video chunks to the client.
+        """
+        video_id = request.match_info['video_id']
+        if not self.client:
+            return web.Response(status=503, text="Client not initialized")
+            
+        logger.info(f"Starting stream for video {video_id}")
+        
+        # Start streaming mode in client
+        success = await self.client.start_stream(video_id)
+        if not success:
+            return web.Response(status=404, text="Video not found or failed to start")
+            
+        # Create streaming response
+        response = web.StreamResponse(
+            status=200,
+            reason='OK',
+            headers={
+                'Content-Type': 'video/mp4',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            }
+        )
+        
+        # Prepare response
+        await response.prepare(request)
+        
+        try:
+            while True:
+                # Get next chunk
+                chunk_data = await self.client.get_stream_chunk()
+                
+                if chunk_data is None:
+                    # End of stream
+                    break
+                    
+                # Write chunk to stream
+                await response.write(chunk_data)
+                
+                # Yield to event loop
+                await asyncio.sleep(0)
+                
+        except asyncio.CancelledError:
+            logger.info("Stream cancelled by client")
+        except Exception as e:
+            logger.error(f"Error during streaming: {e}")
+        finally:
+            # Stop client when stream ends or disconnects
+            await self.client.stop()
+            
+        return response

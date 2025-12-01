@@ -332,8 +332,24 @@ class DemoServer:
         try:
             async with ClientSession() as session:
                 async with session.get(f'{self.config.client_url}/api/{path}') as resp:
-                    content = await resp.read()
-                    return web.Response(body=content, status=resp.status, content_type=resp.content_type)
+                    # Create streaming response
+                    response = web.StreamResponse(
+                        status=resp.status,
+                        reason=resp.reason
+                    )
+                    
+                    # Copy headers
+                    for h, v in resp.headers.items():
+                        if h.lower() not in ('content-length', 'transfer-encoding', 'connection'):
+                            response.headers[h] = v
+                            
+                    await response.prepare(request)
+                    
+                    # Stream content
+                    async for chunk in resp.content.iter_chunked(1024 * 1024):
+                        await response.write(chunk)
+                        
+                    return response
         except Exception as e:
             logger.error(f'Error proxying client API: {e}')
             return web.json_response({'error': str(e)}, status=500)

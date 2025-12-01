@@ -395,6 +395,10 @@
 
         <div class="card">
             <h2>Video Playback</h2>
+                        <div style="margin-bottom: 10px; color: var(--text-secondary); font-size: 0.9rem;">Select a video to play:</div>
+            <div id="videoList" class="node-list" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;">
+                <!-- Populated by JS -->
+            </div>
             <div class="video-container">
                 <video class="video-player" controls id="mainPlayer">
                     <source src="" type="video/mp4">
@@ -541,6 +545,47 @@
                 const response = await fetch('/api/videos');
                 const videos = await response.json();
                 console.log('Available videos:', videos);
+                
+                const container = document.getElementById('videoList');
+                if (!container) return;
+                
+                container.innerHTML = '';
+                
+                if (videos.length === 0) {
+                    container.innerHTML = '<div class="node-item" style="opacity: 0.7;">No videos available</div>';
+                    return;
+                }
+                
+                videos.forEach(video => {
+                    const div = document.createElement('div');
+                    div.className = 'node-item';
+                    div.style.cursor = 'pointer';
+                    div.style.justifyContent = 'space-between';
+                    
+                    // Highlight current video
+                    if (currentVideoId === video.video_id) {
+                        div.style.border = '1px solid var(--accent)';
+                        div.style.background = 'rgba(0, 243, 255, 0.1)';
+                    }
+                    
+                    div.onclick = () => {
+                        currentVideoId = video.video_id;
+                        // Refresh list to update highlight
+                        loadVideos();
+                    };
+                    
+                    div.innerHTML = `
+                        <span class="node-name">
+                            <span style="margin-right: 10px;">🎥</span>
+                            ${video.title || 'Untitled'}
+                        </span>
+                        <span class="node-status-text">
+                            ${video.duration_sec || '?'}s • ${(video.total_chunks || 0)} chunks
+                        </span>
+                    `;
+                    container.appendChild(div);
+                });
+                
             } catch (error) {
                 console.error('Error loading videos:', error);
             }
@@ -587,8 +632,17 @@
                 alert('Please upload a video first!');
                 return;
             }
+            
+            const player = document.getElementById('mainPlayer');
+            const streamUrl = `/client/api/stream/${currentVideoId}`;
+            
+            player.src = streamUrl;
+            player.play().catch(e => {
+                console.error("Playback failed:", e);
+                alert(`Playback failed: ${e.message}`);
+            });
+            
             alert(`Demo playback starting for video: ${currentVideoId}\n\nCheck the Smart Client Dashboard for detailed metrics.`);
-            // In a real integration, we would trigger the client to start playing
         }
 
         function simulateNetworkIssues() {
