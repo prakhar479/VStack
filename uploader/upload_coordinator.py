@@ -29,7 +29,7 @@ class UploadCoordinator:
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
         if self.http_client is None:
-            self.http_client = httpx.AsyncClient(timeout=30.0)
+            self.http_client = httpx.AsyncClient(timeout=30)
         return self.http_client
     
     async def register_video(self, video_id: str, title: str, duration_sec: int):
@@ -73,7 +73,23 @@ class UploadCoordinator:
         except Exception as e:
             logger.error(f"Failed to register video {video_id}: {e}")
             raise ValueError(f"Failed to register video with metadata service: {str(e)}")
-    
+
+    async def _update_video_status(self, video_id: str, status: str) -> None:
+        """Update video status in the metadata service"""
+        # In upload_coordinator.py, in _update_video_status
+        logger.info(f"Attempting to update video {video_id} status to {status} via {self.metadata_service_url}/video/{video_id}/status")
+        try:
+            client = await self._get_http_client()
+            response = await client.patch(
+                f"{self.metadata_service_url}/video/{video_id}/status",
+                json={"status": status}
+            )
+            response.raise_for_status()
+            logger.info(f"Updated video {video_id} status to {status}")
+        except Exception as e:
+            logger.error(f"Failed to update video {video_id} status to {status}: {e}")
+            raise
+
     async def get_healthy_nodes(self) -> List[str]:
         """
         Get list of healthy storage nodes from metadata service
@@ -306,11 +322,17 @@ class UploadCoordinator:
                 if not chunk_info.get("replicas"):
                     raise ValueError(f"Chunk {chunk_info['chunk_id']} has no replicas")
             
+            # Update Video status
+            await self._update_video_status(video_id, "active")
+
             logger.info(f"Video {video_id} finalized: {len(chunks)} chunks verified")
+
             return manifest
             
         except Exception as e:
+            await self._update_video_status(video_id, "deleted")
             logger.error(f"Failed to finalize video {video_id}: {e}")
+
             raise ValueError(f"Failed to finalize video: {str(e)}")
     
     async def cleanup_failed_upload(self, video_id: str):

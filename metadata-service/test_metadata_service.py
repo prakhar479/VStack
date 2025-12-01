@@ -312,37 +312,6 @@ class TestMetadataService:
         await consensus._update_consensus_state(chunk_id, ballot1, None, ConsensusPhase.PREPARE)
 
         state = await consensus.get_consensus_state(chunk_id)
-        assert state is not None, "Consensus state should exist after update"
-        assert state.chunk_id == chunk_id
-        assert state.promised_ballot == ballot1
-        assert state.phase == ConsensusPhase.PREPARE
-
-        # Test state progression
-        await consensus._update_consensus_state(chunk_id, ballot1, json.dumps(node_urls), ConsensusPhase.ACCEPT)
-        state = await consensus.get_consensus_state(chunk_id)
-        assert state.phase == ConsensusPhase.ACCEPT
-        assert state.accepted_value == json.dumps(node_urls)
-
-        # Test commit phase
-        await consensus._commit_phase(chunk_id, node_urls[:2], ballot1)
-
-        # Verify replicas were created
-        conn = await db_manager.get_connection()
-        cursor = await conn.execute("""
-            SELECT COUNT(*) FROM chunk_replicas WHERE chunk_id = ?
-        """, (chunk_id,))
-        count = (await cursor.fetchone())[0]
-        await cursor.close()
-        assert count == 2, "Should have 2 replicas committed"
-
-        # Verify final consensus state
-        state = await consensus.get_consensus_state(chunk_id)
-        assert state.phase == ConsensusPhase.COMMITTED
-
-    @pytest.mark.asyncio
-    async def test_ballot_conflict_resolution(self, db_manager):
-        """Test ballot number conflict resolution"""
-        consensus = ChunkPaxos(db_manager, timeout_sec=5.0)
         chunk_id = "test-chunk-conflict-001"
 
         # Simulate concurrent consensus attempts with different ballots

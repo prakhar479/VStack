@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Chaos Engineering Tests - Random failure injection for resilience testing
+Chaos Engineering Tests - Real system monitoring and resilience testing
+Monitors the live system and tracks availability during failures.
 """
 
 import asyncio
 import logging
-import random
 import time
+import aiohttp
 from typing import List, Dict
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,14 +24,15 @@ class ChaosEvent:
     event_type: str
     target: str
     timestamp: float
-    duration: float
     description: str
+    recovered: bool = False
+    recovery_time: float = 0.0
 
 
 class ChaosEngineer:
     """
     Chaos engineering test suite for V-Stack.
-    Injects random failures to test system resilience.
+    Monitors the live system for failures and tracks resilience.
     """
     
     def __init__(self, node_urls: List[str]):
@@ -43,157 +45,99 @@ class ChaosEngineer:
         self.node_urls = node_urls
         self.events: List[ChaosEvent] = []
         self.running = False
+        self.node_status: Dict[str, bool] = {node: True for node in node_urls}
         
-    async def run_chaos_test(self, duration_sec: int = 120):
+    async def check_node_health(self, node_url: str, session: aiohttp.ClientSession) -> bool:
         """
-        Run chaos engineering test.
+        Check if a node is healthy.
+        
+        Args:
+            node_url: URL of the node
+            session: aiohttp session
+            
+        Returns:
+            True if healthy, False otherwise
+        """
+        try:
+            async with session.get(f'{node_url}/health', timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+    
+    async def run_chaos_test(self, duration_sec: int = 120) -> Dict:
+        """
+        Run chaos engineering test by monitoring the system.
         
         Args:
             duration_sec: Duration of chaos test in seconds
+            
+        Returns:
+            Dictionary with test results
         """
         logger.info("="*80)
-        logger.info("CHAOS ENGINEERING TEST")
+        logger.info("CHAOS ENGINEERING TEST - SYSTEM MONITORING")
         logger.info("="*80)
         logger.info(f"Duration: {duration_sec} seconds")
         logger.info(f"Target nodes: {len(self.node_urls)}")
         logger.info("="*80)
+        logger.info("")
+        logger.info("⚠️  This test MONITORS the system for failures.")
+        logger.info("   To test resilience, manually:")
+        logger.info("   - Stop a storage node container")
+        logger.info("   - Add network latency (tc command)")
+        logger.info("   - Simulate high load")
+        logger.info("")
         
         self.running = True
         start_time = time.time()
         end_time = start_time + duration_sec
         
-        # Chaos scenarios
-        scenarios = [
-            self.inject_node_failure,
-            self.inject_network_latency,
-            self.inject_packet_loss,
-            self.inject_slow_disk,
-            self.inject_memory_pressure
-        ]
+        check_interval = 3  # Check every 3 seconds
         
-        try:
-            while time.time() < end_time and self.running:
-                # Randomly select and execute a chaos scenario
-                scenario = random.choice(scenarios)
-                await scenario()
+        async with aiohttp.ClientSession() as session:
+            try:
+                while time.time() < end_time and self.running:
+                    # Check health of all nodes
+                    for node in self.node_urls:
+                        is_healthy = await self.check_node_health(node, session)
+                        
+                        # Detect state changes
+                        if self.node_status[node] and not is_healthy:
+                            # Node went down
+                            event = ChaosEvent(
+                                event_type="NODE_FAILURE",
+                                target=node,
+                                timestamp=time.time(),
+                                description=f"Node {node} became unhealthy"
+                            )
+                            self.events.append(event)
+                            logger.warning(f"💥 FAILURE DETECTED: {event.description}")
+                            
+                        elif not self.node_status[node] and is_healthy:
+                            # Node recovered
+                            # Find the corresponding failure event
+                            for event in reversed(self.events):
+                                if event.target == node and not event.recovered:
+                                    event.recovered = True
+                                    event.recovery_time = time.time() - event.timestamp
+                                    logger.info(f"✓ RECOVERY: Node {node} recovered after {event.recovery_time:.1f}s")
+                                    break
+                        
+                        # Update status
+                        self.node_status[node] = is_healthy
+                    
+                    # Wait before next check
+                    await asyncio.sleep(check_interval)
+                    
+            except asyncio.CancelledError:
+                logger.info("Chaos test cancelled")
+            finally:
+                self.running = False
                 
-                # Wait before next chaos event
-                await asyncio.sleep(random.uniform(5, 15))
-                
-        except asyncio.CancelledError:
-            logger.info("Chaos test cancelled")
-        finally:
-            self.running = False
-            
         # Generate report
-        self.generate_chaos_report()
+        return self.generate_chaos_report(duration_sec)
         
-    async def inject_node_failure(self):
-        """Inject random node failure."""
-        node = random.choice(self.node_urls)
-        duration = random.uniform(10, 30)
-        
-        event = ChaosEvent(
-            event_type="NODE_FAILURE",
-            target=node,
-            timestamp=time.time(),
-            duration=duration,
-            description=f"Node {node} failed for {duration:.1f}s"
-        )
-        
-        self.events.append(event)
-        logger.warning(f"💥 CHAOS: {event.description}")
-        
-        # Simulate failure duration
-        await asyncio.sleep(duration * 0.1)  # Sped up for demo
-        
-        logger.info(f"✓ Node {node} recovered")
-        
-    async def inject_network_latency(self):
-        """Inject high network latency."""
-        node = random.choice(self.node_urls)
-        latency_ms = random.uniform(100, 500)
-        duration = random.uniform(15, 45)
-        
-        event = ChaosEvent(
-            event_type="HIGH_LATENCY",
-            target=node,
-            timestamp=time.time(),
-            duration=duration,
-            description=f"Node {node} latency increased to {latency_ms:.0f}ms for {duration:.1f}s"
-        )
-        
-        self.events.append(event)
-        logger.warning(f"🐌 CHAOS: {event.description}")
-        
-        await asyncio.sleep(duration * 0.1)
-        
-        logger.info(f"✓ Node {node} latency normalized")
-        
-    async def inject_packet_loss(self):
-        """Inject packet loss."""
-        node = random.choice(self.node_urls)
-        loss_rate = random.uniform(0.1, 0.3)
-        duration = random.uniform(10, 30)
-        
-        event = ChaosEvent(
-            event_type="PACKET_LOSS",
-            target=node,
-            timestamp=time.time(),
-            duration=duration,
-            description=f"Node {node} experiencing {loss_rate*100:.0f}% packet loss for {duration:.1f}s"
-        )
-        
-        self.events.append(event)
-        logger.warning(f"📉 CHAOS: {event.description}")
-        
-        await asyncio.sleep(duration * 0.1)
-        
-        logger.info(f"✓ Node {node} packet loss resolved")
-        
-    async def inject_slow_disk(self):
-        """Inject slow disk I/O."""
-        node = random.choice(self.node_urls)
-        slowdown_factor = random.uniform(2, 5)
-        duration = random.uniform(20, 40)
-        
-        event = ChaosEvent(
-            event_type="SLOW_DISK",
-            target=node,
-            timestamp=time.time(),
-            duration=duration,
-            description=f"Node {node} disk I/O {slowdown_factor:.1f}x slower for {duration:.1f}s"
-        )
-        
-        self.events.append(event)
-        logger.warning(f"💾 CHAOS: {event.description}")
-        
-        await asyncio.sleep(duration * 0.1)
-        
-        logger.info(f"✓ Node {node} disk I/O recovered")
-        
-    async def inject_memory_pressure(self):
-        """Inject memory pressure."""
-        node = random.choice(self.node_urls)
-        memory_usage = random.uniform(85, 95)
-        duration = random.uniform(15, 35)
-        
-        event = ChaosEvent(
-            event_type="MEMORY_PRESSURE",
-            target=node,
-            timestamp=time.time(),
-            duration=duration,
-            description=f"Node {node} memory usage at {memory_usage:.0f}% for {duration:.1f}s"
-        )
-        
-        self.events.append(event)
-        logger.warning(f"🧠 CHAOS: {event.description}")
-        
-        await asyncio.sleep(duration * 0.1)
-        
-        logger.info(f"✓ Node {node} memory pressure relieved")
-        
-    def generate_chaos_report(self):
+    def generate_chaos_report(self, duration: float) -> Dict:
         """Generate chaos engineering test report."""
         logger.info("\n" + "="*80)
         logger.info("CHAOS ENGINEERING TEST REPORT")
@@ -204,31 +148,66 @@ class ChaosEngineer:
         for event in self.events:
             event_counts[event.event_type] = event_counts.get(event.event_type, 0) + 1
             
-        logger.info(f"\nTotal chaos events: {len(self.events)}")
-        logger.info("\nEvents by type:")
-        for event_type, count in sorted(event_counts.items()):
-            logger.info(f"  {event_type}: {count}")
+        logger.info(f"\nTotal events detected: {len(self.events)}")
+        
+        if event_counts:
+            logger.info("\nEvents by type:")
+            for event_type, count in sorted(event_counts.items()):
+                logger.info(f"  {event_type}: {count}")
+        else:
+            logger.info("\n✓ No failures detected during monitoring period")
             
         # Count events by node
         node_counts = {}
         for event in self.events:
             node_counts[event.target] = node_counts.get(event.target, 0) + 1
             
-        logger.info("\nEvents by node:")
-        for node, count in sorted(node_counts.items()):
-            logger.info(f"  {node}: {count}")
+        if node_counts:
+            logger.info("\nEvents by node:")
+            for node, count in sorted(node_counts.items()):
+                logger.info(f"  {node}: {count}")
+                
+        # Calculate recovery stats
+        recovered_events = [e for e in self.events if e.recovered]
+        unrecovered_events = [e for e in self.events if not e.recovered]
+        
+        if recovered_events:
+            avg_recovery_time = sum(e.recovery_time for e in recovered_events) / len(recovered_events)
+            logger.info(f"\nRecovery Statistics:")
+            logger.info(f"  Recovered events: {len(recovered_events)}")
+            logger.info(f"  Average recovery time: {avg_recovery_time:.1f}s")
             
-        # Calculate total chaos time
-        total_chaos_time = sum(event.duration for event in self.events)
-        logger.info(f"\nTotal chaos time: {total_chaos_time:.1f}s")
+        if unrecovered_events:
+            logger.info(f"\n⚠️  Unrecovered failures: {len(unrecovered_events)}")
+            for event in unrecovered_events:
+                logger.info(f"  - {event.target} (failed at {time.strftime('%H:%M:%S', time.localtime(event.timestamp))})")
+        
+        # Calculate availability
+        total_node_time = duration * len(self.node_urls)
+        downtime = sum(e.recovery_time if e.recovered else duration - (e.timestamp - time.time() + duration) 
+                      for e in self.events)
+        availability = ((total_node_time - downtime) / total_node_time * 100) if total_node_time > 0 else 100
+        
+        logger.info(f"\nSystem Availability: {availability:.2f}%")
         
         logger.info("\n" + "="*80)
         logger.info("KEY OBSERVATIONS:")
-        logger.info("✓ System should maintain playback during chaos events")
-        logger.info("✓ Smart client should automatically failover to healthy nodes")
-        logger.info("✓ Buffer should prevent rebuffering during brief failures")
-        logger.info("✓ Consensus should handle node failures gracefully")
+        logger.info("✓ System monitoring demonstrates failure detection")
+        logger.info("✓ Recovery tracking shows system resilience")
+        logger.info("✓ High availability indicates robust design")
         logger.info("="*80)
+        
+        return {
+            'duration': duration,
+            'total_events': len(self.events),
+            'event_counts': event_counts,
+            'node_counts': node_counts,
+            'recovered_events': len(recovered_events),
+            'unrecovered_events': len(unrecovered_events),
+            'avg_recovery_time': sum(e.recovery_time for e in recovered_events) / len(recovered_events) if recovered_events else 0,
+            'availability_percent': availability,
+            'events': [asdict(e) for e in self.events]
+        }
 
 
 async def main():
@@ -245,7 +224,7 @@ async def main():
     
     try:
         # Run chaos test
-        await chaos.run_chaos_test(duration_sec=60)
+        report = await chaos.run_chaos_test(duration_sec=60)
         
     except KeyboardInterrupt:
         logger.info("\nChaos test interrupted by user")

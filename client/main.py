@@ -315,6 +315,7 @@ class SmartClient:
     def get_status(self) -> Dict:
         """Get comprehensive client status for dashboard."""
         status = {
+            'is_initialized': self.session is not None,
             'video_id': self.video_id,
             'playing': self.playing,
             'startup_latency': self.startup_latency,

@@ -84,31 +84,24 @@ class DashboardServer:
         self.metrics_collector = MetricsCollector(client)
         self.collect_task = None
         
-        # Cache dashboard HTML
+        # Cache dashboard HTML and validate
         self.dashboard_html = None
         self.dashboard_path = os.path.join(os.path.dirname(__file__), 'dashboard.html')
+        
+        # Validate dashboard file exists
+        if not os.path.exists(self.dashboard_path):
+            logger.warning(f"Dashboard HTML not found at {self.dashboard_path}")
+            logger.warning("Dashboard UI will not be available, only API endpoints")
         
         self._setup_routes()
         
     def _setup_routes(self):
         """Setup API routes."""
         self.app.router.add_get('/', self.handle_index)
+        self.app.router.add_get('/health', self.handle_health)
         self.app.router.add_get('/api/status', self.handle_status)
         self.app.router.add_get('/api/history', self.handle_history)
         self.app.router.add_post('/api/control', self.handle_control)
-        
-        # CORS setup (basic)
-        import aiohttp_cors
-        cors = aiohttp_cors.setup(self.app, defaults={
-            "*": aiohttp_cors.ResourceOptions(
-                allow_credentials=True,
-                expose_headers="*",
-                allow_headers="*",
-            )
-        })
-        
-        for route in list(self.app.router.routes()):
-            cors.add(route)
             
     async def start(self):
         """Start the dashboard server."""
@@ -187,32 +180,66 @@ class DashboardServer:
             logger.error(f"Error getting history: {e}")
             return web.json_response({'error': str(e)}, status=500)
             
+    async def handle_health(self, request):
+        """Health check endpoint for k8s/docker."""
+        if not self.client:
+            return web.json_response({'status': 'unhealthy', 'reason': 'Client not initialized'}, status=503)
+        
+        # Check if client is ready
+        try:
+            status = self.client.get_status()
+            is_healthy = status.get('is_initialized', False)
+            
+            if is_healthy:
+                return web.json_response({'status': 'healthy'}, status=200)
+            else:
+                return web.json_response({'status': 'unhealthy', 'reason': 'Client not ready'}, status=503)
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return web.json_response({'status': 'unhealthy', 'error': str(e)}, status=503)
+    
     async def handle_control(self, request):
         """Handle control commands (play, stop, etc.)."""
         if not self.client:
             return web.json_response({'error': 'Client not initialized'}, status=503)
             
         try:
-            data = await request.json()
+            # Validate JSON
+            try:
+                data = await request.json()
+            except json.JSONDecodeError:
+                return web.json_response({'error': 'Invalid JSON'}, status=400)
+            
+            # Validate command field
             command = data.get('command')
+            if not command or not isinstance(command, str):
+                return web.json_response({'error': 'Missing or invalid command field'}, status=400)
             
             if command == 'play':
                 video_id = data.get('video_id')
-                if not video_id:
-                    return web.json_response({'error': 'Missing video_id'}, status=400)
+                if not video_id or not isinstance(video_id, str):
+                    return web.json_response({'error': 'Missing or invalid video_id'}, status=400)
+                
+                # Validate video_id format (optional but recommended)
+                if not video_id.strip():
+                    return web.json_response({'error': 'video_id cannot be empty'}, status=400)
                     
-                # We can't easily await play_video here as it blocks
-                # Ideally, main.py should handle this via an event or queue
-                # For now, we'll just acknowledge
-                return web.json_response({'status': 'Command received (not fully implemented via API)'})
+                # Note: Actual playback implementation needs refactoring (see Priority 2)
+                return web.json_response({
+                    'status': 'acknowledged',
+                    'note': 'Playback API not yet implemented - use main.py directly'
+                })
                 
             elif command == 'stop':
                 await self.client.stop()
                 return web.json_response({'status': 'stopped'})
                 
             else:
-                return web.json_response({'error': 'Unknown command'}, status=400)
+                return web.json_response({
+                    'error': f'Unknown command: {command}',
+                    'valid_commands': ['play', 'stop']
+                }, status=400)
                 
         except Exception as e:
-            logger.error(f"Error handling control command: {e}")
-            return web.json_response({'error': str(e)}, status=500)
+            logger.error(f"Error handling control command: {e}", exc_info=True)
+            return web.json_response({'error': 'Internal server error'}, status=500)

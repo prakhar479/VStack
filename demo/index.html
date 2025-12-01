@@ -410,6 +410,32 @@
         </div>
 
         <div class="card">
+            <h2>System Benchmarks</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">Run comprehensive performance tests against
+                the live system</p>
+            <div class="controls">
+                <button onclick="runBenchmark()" id="benchmarkBtn">Run Benchmark Suite</button>
+            </div>
+            <div id="benchmarkResults" style="display: none; margin-top: 20px;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Benchmark Results</h3>
+                <div id="benchmarkData" class="metric-grid" style="grid-template-columns: 1fr;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Resilience Testing</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">Monitor system health and track failures in
+                real-time</p>
+            <div class="controls">
+                <button onclick="runChaosTest()" id="chaosBtn">Start Monitoring (60s)</button>
+            </div>
+            <div id="chaosResults" style="display: none; margin-top: 20px;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Monitoring Results</h3>
+                <div id="chaosData"></div>
+            </div>
+        </div>
+
+        <div class="card">
             <h2>Storage Nodes Status</h2>
             <div id="nodeStatus" class="node-list">
                 <!-- Populated by JS -->
@@ -567,6 +593,126 @@
 
         function simulateNetworkIssues() {
             alert('Network simulation is available through the network_emulator.py script.\n\nRun: python demo/network_emulator.py');
+        }
+
+        async function runBenchmark() {
+            const btn = document.getElementById('benchmarkBtn');
+            const resultsDiv = document.getElementById('benchmarkResults');
+            const dataDiv = document.getElementById('benchmarkData');
+
+            btn.disabled = true;
+            btn.textContent = 'Running Benchmark...';
+            resultsDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/benchmark/run', {
+                    method: 'POST'
+                });
+
+                const results = await response.json();
+
+                if (response.ok) {
+                    // Display results
+                    dataDiv.innerHTML = '';
+
+                    // Summary
+                    const summary = document.createElement('div');
+                    summary.style.cssText = 'background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px; margin-bottom: 15px;';
+                    summary.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Tests Passed: <strong style="color: var(--success)">${results.passed}/${results.total_tests}</strong></span>
+                            <span>Pass Rate: <strong style="color: ${results.pass_rate >= 75 ? 'var(--success)' : 'var(--warning)'}">${results.pass_rate.toFixed(1)}%</strong></span>
+                        </div>
+                    `;
+                    dataDiv.appendChild(summary);
+
+                    // Individual results
+                    results.results.forEach(result => {
+                        const item = document.createElement('div');
+                        item.className = 'metric-item';
+                        item.style.textAlign = 'left';
+                        const status = result.passed ? '✓' : '✗';
+                        const color = result.passed ? 'var(--success)' : 'var(--danger)';
+                        item.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>${result.test_name}</span>
+                                <span style="color: ${color}">${status} ${result.measured_value.toFixed(2)} ${result.unit}</span>
+                            </div>
+                            ${result.notes ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px;">${result.notes}</div>` : ''}
+                        `;
+                        dataDiv.appendChild(item);
+                    });
+
+                    resultsDiv.style.display = 'block';
+                } else {
+                    alert(`Benchmark failed: ${results.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Benchmark error:', error);
+                alert(`Benchmark error: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Benchmark Suite';
+            }
+        }
+
+        async function runChaosTest() {
+            const btn = document.getElementById('chaosBtn');
+            const resultsDiv = document.getElementById('chaosResults');
+            const dataDiv = document.getElementById('chaosData');
+
+            btn.disabled = true;
+            btn.textContent = 'Monitoring System...';
+            resultsDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/chaos/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration: 60 })
+                });
+
+                const results = await response.json();
+
+                if (response.ok) {
+                    // Display results
+                    dataDiv.innerHTML = '';
+
+                    const summary = document.createElement('div');
+                    summary.style.cssText = 'background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px;';
+                    summary.innerHTML = `
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Availability</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--success);">${results.availability_percent.toFixed(2)}%</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Total Events</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--accent-secondary);">${results.total_events}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Recovered</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--success);">${results.recovered_events}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Avg Recovery Time</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--warning);">${results.avg_recovery_time.toFixed(1)}s</div>
+                            </div>
+                        </div>
+                    `;
+                    dataDiv.appendChild(summary);
+
+                    resultsDiv.style.display = 'block';
+                } else {
+                    alert(`Chaos test failed: ${results.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Chaos test error:', error);
+                alert(`Chaos test error: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Start Monitoring (60s)';
+            }
         }
 
         // Cleanup on page unload

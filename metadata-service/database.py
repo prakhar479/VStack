@@ -495,3 +495,24 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get storage overhead stats: {e}")
             return {}
+
+    async def update_video_status(self, video_id: str, status: str) -> bool:
+        """Update video status in the database.
+        
+        Args:
+            video_id: The ID of the video to update
+            status: New status value
+            
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            conn = await self.get_connection()
+            result = await conn.execute(
+                "UPDATE videos SET status = ? WHERE video_id = ?",
+                (status, video_id)
+            )
+            return result.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error updating video {video_id} status: {e}")
+            return False

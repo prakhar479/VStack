@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
         logger.info("Redundancy manager initialized")
         
         # Initialize and start health monitoring
-        health_monitor = HealthMonitor(db_manager)
+        health_monitor = HealthMonitor(db_manager, heartbeat_timeout_sec=os.getenv("HEARTBEAT_TIMEOUT_SEC", 100), probe_interval_sec=os.getenv("PROBE_INTERVAL_SEC", 30))
         await health_monitor.start_monitoring()
         logger.info("Health monitor started")
         
@@ -176,6 +176,43 @@ async def create_video(request: CreateVideoRequest):
         video_id=video_id,
         upload_url=upload_url
     )
+
+@app.patch("/video/{video_id}/status", response_model=dict)
+async def update_video_status(video_id: str, status_update: dict) -> dict:
+    """Update video status.
+    
+    Valid status values: 'uploading', 'processing', 'ready', 'failed'
+    """
+    try:
+        # Validate status
+        valid_statuses = {"uploading", "active", "deleted"}
+        new_status = status_update.get("status")
+        
+        if not new_status or new_status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        # Update status in database
+        success = await db_manager.update_video_status(video_id, new_status)
+        if not success:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return {
+            "status": "success",
+            "message": f"Video status updated to {new_status}",
+            "video_id": video_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update video status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update video status"
+        )
 
 @app.get("/videos")
 async def list_videos(limit: int = 100, offset: int = 0):

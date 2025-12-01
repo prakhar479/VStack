@@ -53,7 +53,7 @@ class SessionManager:
             "filename": filename,
             "status": "uploading",
             "progress": 0,
-            "started_at": datetime.now(datetime.UTC).isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
             "error": None
         }
         return session_id
@@ -72,7 +72,7 @@ class SessionManager:
                 self._sessions[session_id]["error"] = error
             
             if status == "completed":
-                self._sessions[session_id]["completed_at"] = datetime.now(datetime.UTC).isoformat()
+                self._sessions[session_id]["completed_at"] = datetime.now(UTC).isoformat()
     
     def update_progress(self, session_id: str, progress: int):
         """Update session progress"""
@@ -232,7 +232,7 @@ async def upload_video(
         
     except Exception as e:
         logger.error(f"Upload failed for {title}: {e}")
-        session_manager.update_status(upload_session_id, "failed", error=str(e))
+        session_manager.update_status(upload_session_id, "deleted", error=str(e))
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.get("/upload/status/{upload_session_id}")
@@ -316,14 +316,14 @@ async def process_and_upload_video(
         await video_processor.cleanup(video_id)  # Uses original ID for temp file cleanup
         
         # Mark upload as complete
-        session_manager.update_status(upload_session_id, "completed", progress=100)
+        session_manager.update_status(upload_session_id, "active", progress=100)
         session_manager.add_metadata(upload_session_id, "manifest_url", f"/manifest/{server_video_id}")
         
         logger.info(f"Video {server_video_id} upload completed successfully")
         
     except Exception as e:
         logger.error(f"Failed to process video {video_id}: {e}", exc_info=True)
-        session_manager.update_status(upload_session_id, "failed", error=str(e))
+        session_manager.update_status(upload_session_id, "deleted", error=str(e))
         
         # Cleanup on failure
         try:

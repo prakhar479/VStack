@@ -6,10 +6,22 @@ Demo Web Server - Serves the demo interface and proxies API calls
 import asyncio
 import logging
 import os
+import json
 import aiohttp
 from aiohttp import web, ClientSession
 import aiofiles
 from dotenv import load_dotenv
+
+# Import benchmark and chaos modules (will be refactored to support real system)
+# Note: These imports assume the files are in the same directory or python path
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# We will import these dynamically or assume they exist. 
+# For now, we'll import them, but we need to make sure the files exist and have the classes.
+# Since I haven't refactored them yet, this might fail if I run it immediately.
+# But I will refactor them next.
+from benchmark import PerformanceBenchmark
+from chaos_test import ChaosEngineer
 
 load_dotenv()
 
@@ -17,27 +29,50 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class Config:
+    """Configuration for the Demo Server."""
+    def __init__(self):
+        self.host = os.getenv('DEMO_HOST', '0.0.0.0')
+        self.port = int(os.getenv('DEMO_PORT', 8085))
+        
+        # Service URLs
+        self.metadata_url = os.getenv('METADATA_SERVICE_URL', 'http://localhost:8080')
+        self.uploader_url = os.getenv('UPLOADER_SERVICE_URL', 'http://localhost:8084')
+        self.client_url = os.getenv('CLIENT_DASHBOARD_URL', 'http://localhost:8086')
+        
+        # Storage Nodes (dynamic discovery would be better, but config is a good start)
+        self.storage_nodes = [
+            os.getenv('STORAGE_NODE_1_URL', 'http://localhost:8081'),
+            os.getenv('STORAGE_NODE_2_URL', 'http://localhost:8082'),
+            os.getenv('STORAGE_NODE_3_URL', 'http://localhost:8083'),
+        ]
+
+    def to_dict(self):
+        return {
+            'metadata_url': self.metadata_url,
+            'uploader_url': self.uploader_url,
+            'client_url': self.client_url,
+            'storage_nodes': self.storage_nodes
+        }
+
+
 class DemoServer:
     """Demo web server with API proxy."""
     
-    def __init__(self, host='0.0.0.0', port=8085):
-        self.host = host
-        self.port = port
+    def __init__(self):
+        self.config = Config()
         self.app = web.Application()
-        
-        # Service URLs from environment
-        self.metadata_url = os.getenv('METADATA_SERVICE_URL', 'http://metadata-service:8080')
-        self.uploader_url = os.getenv('UPLOADER_SERVICE_URL', 'http://uploader-service:8084')
-        self.client_url = os.getenv('CLIENT_DASHBOARD_URL', 'http://smart-client:8086')
-        
         self.setup_routes()
+        self.benchmark_running = False
+        self.chaos_running = False
         
     def setup_routes(self):
         """Setup HTTP routes."""
         # Serve static files
         self.app.router.add_get('/', self.serve_index)
-        self.app.router.add_get('/consensus', self.serve_consensus)
-        self.app.router.add_get('/storage-efficiency', self.serve_storage_efficiency)
+        self.app.router.add_get('/consensus.html', self.serve_consensus)
+        self.app.router.add_get('/storage_efficiency.html', self.serve_storage_efficiency)
+        
         
         # API proxy endpoints
         self.app.router.add_get('/api/health', self.get_system_health)
@@ -45,6 +80,11 @@ class DemoServer:
         self.app.router.add_get('/api/stats', self.get_stats)
         self.app.router.add_get('/api/storage/overhead', self.get_storage_overhead)
         self.app.router.add_post('/api/upload', self.upload_video)
+        
+        # New API endpoints
+        self.app.router.add_get('/api/config', self.get_config)
+        self.app.router.add_post('/api/benchmark/run', self.run_benchmark)
+        self.app.router.add_post('/api/chaos/run', self.run_chaos)
         
         # Client Dashboard Proxy
         self.app.router.add_get('/client', self.serve_client_dashboard)
@@ -80,6 +120,10 @@ class DemoServer:
             return web.Response(text=content, content_type='text/html')
         except FileNotFoundError:
             return web.Response(text='Storage efficiency dashboard not found', status=404)
+
+    async def get_config(self, request):
+        """Get system configuration."""
+        return web.json_response(self.config.to_dict())
             
     async def get_system_health(self, request):
         """Get health status of all services."""
@@ -88,7 +132,7 @@ class DemoServer:
         async with ClientSession() as session:
             # Check metadata service
             try:
-                async with session.get(f'{self.metadata_url}/health', timeout=5) as resp:
+                async with session.get(f'{self.config.metadata_url}/health', timeout=5) as resp:
                     if resp.status == 200:
                         health_status['metadata'] = await resp.json()
                     else:
@@ -98,7 +142,7 @@ class DemoServer:
                 
             # Check uploader service
             try:
-                async with session.get(f'{self.uploader_url}/health', timeout=5) as resp:
+                async with session.get(f'{self.config.uploader_url}/health', timeout=5) as resp:
                     if resp.status == 200:
                         health_status['uploader'] = await resp.json()
                     else:
@@ -108,8 +152,7 @@ class DemoServer:
                 
             # Check storage nodes
             storage_nodes = []
-            for port in [8081, 8082, 8083]:
-                node_url = f'http://storage-node-{port-8080}:8081'
+            for node_url in self.config.storage_nodes:
                 try:
                     async with session.get(f'{node_url}/health', timeout=5) as resp:
                         if resp.status == 200:
@@ -131,7 +174,7 @@ class DemoServer:
         """List all videos from metadata service."""
         try:
             async with ClientSession() as session:
-                async with session.get(f'{self.metadata_url}/videos') as resp:
+                async with session.get(f'{self.config.metadata_url}/videos') as resp:
                     if resp.status == 200:
                         videos = await resp.json()
                         return web.json_response(videos)
@@ -148,7 +191,7 @@ class DemoServer:
         """Get system statistics."""
         try:
             async with ClientSession() as session:
-                async with session.get(f'{self.metadata_url}/stats') as resp:
+                async with session.get(f'{self.config.metadata_url}/stats') as resp:
                     if resp.status == 200:
                         stats = await resp.json()
                         return web.json_response(stats)
@@ -165,7 +208,7 @@ class DemoServer:
         """Get storage overhead statistics."""
         try:
             async with ClientSession() as session:
-                async with session.get(f'{self.metadata_url}/storage/overhead') as resp:
+                async with session.get(f'{self.config.metadata_url}/storage/overhead') as resp:
                     if resp.status == 200:
                         stats = await resp.json()
                         return web.json_response(stats)
@@ -179,30 +222,91 @@ class DemoServer:
             return web.json_response({'error': str(e)}, status=500)
             
     async def upload_video(self, request):
-        """Proxy video upload to uploader service."""
+        """Proxy video upload to uploader service using streaming."""
         try:
-            # This is a simplified proxy - in production you'd stream the upload
             reader = await request.multipart()
             
+            # We need to collect the fields and stream the video
+            video_field = None
+            title = "Untitled"
+            
+            # Read fields
+            async for field in reader:
+                if field.name == 'title':
+                    title = await field.text()
+                elif field.name == 'video':
+                    video_field = field
+                    # Don't break - we need to keep the field for streaming
+                    filename = field.filename or 'video.mp4'
+                    content_type = field.headers.get('Content-Type', 'video/mp4')
+                    break
+            
+            if not video_field:
+                return web.json_response({'error': 'No video file found'}, status=400)
+
+            # Stream to uploader service using FormData
             async with ClientSession() as session:
+                # Create a new FormData with proper multipart encoding
                 data = aiohttp.FormData()
+                data.add_field('title', title)
+                data.add_field('video', 
+                              video_field,  # Stream the field directly
+                              filename=filename,
+                              content_type=content_type)
                 
-                async for field in reader:
-                    if field.name == 'video':
-                        data.add_field('video', 
-                                     await field.read(),
-                                     filename=field.filename,
-                                     content_type=field.headers.get('Content-Type'))
-                    elif field.name == 'title':
-                        data.add_field('title', await field.text())
-                        
-                async with session.post(f'{self.uploader_url}/upload', data=data) as resp:
-                    result = await resp.json()
+                # Post with streaming
+                async with session.post(f'{self.config.uploader_url}/upload', data=data) as resp:
+                    if resp.content_type == 'application/json':
+                        result = await resp.json()
+                    else:
+                        text = await resp.text()
+                        result = {'error': f'Unexpected response: {text}'}
+                    
                     return web.json_response(result, status=resp.status)
                     
         except Exception as e:
-            logger.error(f'Error uploading video: {e}')
+            logger.error(f'Error uploading video: {e}', exc_info=True)
             return web.json_response({'error': str(e)}, status=500)
+
+    async def run_benchmark(self, request):
+        """Run the benchmark suite."""
+        if self.benchmark_running:
+            return web.json_response({'error': 'Benchmark already running'}, status=409)
+            
+        self.benchmark_running = True
+        try:
+            # Initialize benchmark with real system config
+            benchmark = PerformanceBenchmark(
+                metadata_url=self.config.metadata_url,
+                storage_nodes=self.config.storage_nodes
+            )
+            report = await benchmark.run_all_benchmarks()
+            return web.json_response(report)
+        except Exception as e:
+            logger.error(f"Benchmark failed: {e}", exc_info=True)
+            return web.json_response({'error': str(e)}, status=500)
+        finally:
+            self.benchmark_running = False
+
+    async def run_chaos(self, request):
+        """Run the chaos/resilience test."""
+        if self.chaos_running:
+            return web.json_response({'error': 'Chaos test already running'}, status=409)
+            
+        self.chaos_running = True
+        try:
+            # Parse duration from request
+            data = await request.json()
+            duration = data.get('duration', 60)
+            
+            chaos = ChaosEngineer(self.config.storage_nodes)
+            report = await chaos.run_chaos_test(duration_sec=duration)
+            return web.json_response(report)
+        except Exception as e:
+            logger.error(f"Chaos test failed: {e}", exc_info=True)
+            return web.json_response({'error': str(e)}, status=500)
+        finally:
+            self.chaos_running = False
             
     async def serve_client_dashboard(self, request):
         """Proxy the client dashboard HTML."""
@@ -212,7 +316,7 @@ class DemoServer:
                 return web.HTTPFound('/client/')
                 
             async with ClientSession() as session:
-                async with session.get(f'{self.client_url}/') as resp:
+                async with session.get(f'{self.config.client_url}/') as resp:
                     if resp.status == 200:
                         content = await resp.text()
                         return web.Response(text=content, content_type='text/html')
@@ -227,7 +331,7 @@ class DemoServer:
         path = request.match_info['path']
         try:
             async with ClientSession() as session:
-                async with session.get(f'{self.client_url}/api/{path}') as resp:
+                async with session.get(f'{self.config.client_url}/api/{path}') as resp:
                     content = await resp.read()
                     return web.Response(body=content, status=resp.status, content_type=resp.content_type)
         except Exception as e:
@@ -238,13 +342,13 @@ class DemoServer:
         """Start the demo server."""
         runner = web.AppRunner(self.app)
         await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
+        site = web.TCPSite(runner, self.config.host, self.config.port)
         await site.start()
         
-        logger.info(f"Demo server started at http://{self.host}:{self.port}")
-        logger.info(f"Metadata Service: {self.metadata_url}")
-        logger.info(f"Uploader Service: {self.uploader_url}")
-        logger.info(f"Client Dashboard: {self.client_url}")
+        logger.info(f"Demo server started at http://{self.config.host}:{self.config.port}")
+        logger.info(f"Metadata Service: {self.config.metadata_url}")
+        logger.info(f"Uploader Service: {self.config.uploader_url}")
+        logger.info(f"Client Dashboard: {self.config.client_url}")
         
     async def run(self):
         """Run the demo server indefinitely."""

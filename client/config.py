@@ -8,10 +8,10 @@ class ClientConfig:
     """Centralized configuration for Smart Client."""
     
     # Network Monitoring
-    PING_INTERVAL: float = float(os.getenv("PING_INTERVAL", "3.0"))
+    PING_INTERVAL: float = float(os.getenv("PING_INTERVAL", "10.0"))
     HISTORY_SIZE: int = int(os.getenv("HISTORY_SIZE", "10"))
-    PING_TIMEOUT: float = float(os.getenv("PING_TIMEOUT", "5.0"))
-    NODE_HEALTH_TIMEOUT: float = float(os.getenv("NODE_HEALTH_TIMEOUT", "30.0"))
+    PING_TIMEOUT: float = float(os.getenv("PING_TIMEOUT", "10.0"))
+    NODE_HEALTH_TIMEOUT: float = float(os.getenv("NODE_HEALTH_TIMEOUT", "10.0"))
     
     # Buffer Management
     TARGET_BUFFER_SEC: int = int(os.getenv("TARGET_BUFFER_SEC", "30"))
@@ -34,7 +34,7 @@ class ClientConfig:
     # Services
     METADATA_SERVICE_URL: str = os.getenv("METADATA_SERVICE_URL", "http://localhost:8080")
     DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8888"))
-    CLIENT_SERVICE_PORT: int = int(os.getenv("CLIENT_SERVICE_PORT", "8083"))
+    CLIENT_SERVICE_PORT: int = int(os.getenv("CLIENT_SERVICE_PORT", "8086"))
 
 # Global config instance
 config = ClientConfig()

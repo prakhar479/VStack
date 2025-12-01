@@ -146,22 +146,22 @@ async def test_video_manifest():
         chunk_ids = ["chunk-001", "chunk-002"]
         node_urls = ["http://node1:8080", "http://node2:8080"]
         
-        async with await db.get_connection() as conn:
-            # Add chunks
-            for i, chunk_id in enumerate(chunk_ids):
-                await conn.execute("""
-                    INSERT INTO chunks (chunk_id, video_id, sequence_num, size_bytes, checksum)
-                    VALUES (?, ?, ?, 2097152, ?)
-                """, (chunk_id, video_id, i, f"checksum-{i}"))
-                
-                # Add replicas
-                for node_url in node_urls:
-                    await conn.execute("""
-                        INSERT INTO chunk_replicas (chunk_id, node_url, status)
-                        VALUES (?, ?, 'active')
-                    """, (chunk_id, node_url))
+        conn = await db.get_connection()
+        # Add chunks
+        for i, chunk_id in enumerate(chunk_ids):
+            await conn.execute("""
+                INSERT INTO chunks (chunk_id, video_id, sequence_num, size_bytes, checksum)
+                VALUES (?, ?, ?, 2097152, ?)
+            """, (chunk_id, video_id, i, f"checksum-{i}"))
             
-            await conn.commit()
+            # Add replicas
+            for node_url in node_urls:
+                await conn.execute("""
+                    INSERT INTO chunk_replicas (chunk_id, node_url, status)
+                    VALUES (?, ?, 'active')
+                """, (chunk_id, node_url))
+        
+        await conn.commit()
         
         # Test manifest retrieval
         manifest = await db.get_video_manifest(video_id)
@@ -201,13 +201,13 @@ async def test_node_failure_simulation():
         
         # Simulate old heartbeat for node-1
         old_time = datetime.now() - timedelta(seconds=120)
-        async with await db.get_connection() as conn:
-            await conn.execute("""
-                UPDATE storage_nodes 
-                SET last_heartbeat = ?
-                WHERE node_id = 'node-1'
-            """, (old_time.isoformat(),))
-            await conn.commit()
+        conn = await db.get_connection()
+        await conn.execute("""
+            UPDATE storage_nodes 
+            SET last_heartbeat = ?
+            WHERE node_id = 'node-1'
+        """, (old_time.isoformat(),))
+        await conn.commit()
         
         # Mark unhealthy nodes
         await monitor._mark_unhealthy_nodes()

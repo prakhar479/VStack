@@ -6,9 +6,170 @@ This directory contains demonstration tools and benchmarks for showcasing the th
 2. **Lightweight Consensus** - ChunkPaxos protocol
 3. **Adaptive Redundancy** - Dynamic replication strategies
 
+## Tool Categories
+
+### 🌐 **Web Dashboard (Primary Interface)**
+The main demo server provides a unified web interface to interact with the V-Stack system, run benchmarks, and visualize results.
+
+### 📊 **Real System Integration**
+Tools that measure and interact with the actual running V-Stack system:
+- `server.py` - Main demo server with web UI
+- `benchmark.py` - Performance tests against live system
+- `chaos_test.py` - Real-time system health monitoring
+
+### 🎮 **Simulations**
+Educational demonstrations that simulate V-Stack concepts (do NOT require running services):
+- `smart_vs_naive_demo.py` - Simulated client comparison
+- `adaptive_redundancy_demo.py` - Storage efficiency simulation
+- `network_emulator.py` - Network condition simulator
+- `run_demo.py` - Orchestrated simulation suite
+
+## Quick Start Guide
+
+### Option 1: Web Dashboard (Recommended)
+
+The easiest way to explore V-Stack is through the web dashboard:
+
+#### 1. Start the System
+```bash
+# Ensure all services are running (metadata-service, storage nodes, etc.)
+docker-compose up -d
+```
+
+#### 2. Start the Demo Server
+```bash
+python demo/server.py
+```
+
+#### 3. Open Dashboard
+Navigate to **http://localhost:8085** in your browser.
+
+#### 4. Explore Features
+- **Upload Videos**: Test the upload pipeline
+- **System Performance**: View real-time metrics
+- **Run Benchmarks**: Click "Run Benchmark Suite" to test against performance targets
+- **Resilience Testing**: Click "Start Monitoring" to track system health
+- **Storage Nodes**: Monitor node status in real-time
+
+### Option 2: Command-Line Benchmarks
+
+Run benchmarks directly from the command line:
+
+```bash
+# Test system performance
+python demo/benchmark.py
+
+# Monitor system resilience (60 seconds)
+python demo/chaos_test.py
+```
+
+### Option 3: Simulated Demos
+
+Run educational simulations (no services required):
+
+```bash
+# Compare smart vs naive client
+python demo/smart_vs_naive_demo.py
+
+# Demonstrate storage efficiency
+python demo/adaptive_redundancy_demo.py
+
+# Run full simulation suite
+python demo/run_demo.py
+```
+
 ## Tools Overview
 
-### 1. Performance Monitoring Dashboard
+### 1. Demo Web Server ⭐ **NEW**
+**File:** `server.py`
+
+**Type:** Real System Integration
+
+Unified web dashboard that:
+- Serves the interactive web UI
+- Proxies requests to backend services
+- Runs benchmarks against the live system
+- Monitors system health in real-time
+- Provides video upload interface
+
+**Usage:**
+```bash
+python demo/server.py
+# Open http://localhost:8085
+```
+
+**Environment Variables:**
+```bash
+DEMO_PORT=8085
+METADATA_SERVICE_URL=http://localhost:8080
+UPLOADER_SERVICE_URL=http://localhost:8084
+CLIENT_DASHBOARD_URL=http://localhost:8086
+STORAGE_NODE_1_URL=http://localhost:8081
+STORAGE_NODE_2_URL=http://localhost:8082
+STORAGE_NODE_3_URL=http://localhost:8083
+```
+
+### 2. Performance Benchmark Suite ⭐ **UPDATED**
+**File:** `benchmark.py`
+
+**Type:** Real System Integration
+
+Tests the **actual running system** against performance requirements:
+- System health checks
+- API latency measurements
+- Storage node response times
+- Startup latency (manifest fetch)
+
+**Usage:**
+```bash
+# Via Web UI (Recommended)
+# Click "Run Benchmark Suite" button
+
+# Via Command Line
+python demo/benchmark.py
+
+# Programmatically
+from benchmark import PerformanceBenchmark
+benchmark = PerformanceBenchmark(
+    metadata_url='http://localhost:8080',
+    storage_nodes=['http://localhost:8081', ...]
+)
+report = await benchmark.run_all_benchmarks()
+```
+
+### 3. Chaos Engineering Tests ⭐ **UPDATED**
+**File:** `chaos_test.py`
+
+**Type:** Real System Integration
+
+Monitors the **live system** for failures and tracks resilience:
+- Polls service health endpoints
+- Detects node failures automatically
+- Tracks recovery times
+- Calculates system availability
+
+**Usage:**
+```bash
+# Via Web UI (Recommended)
+# Click "Start Monitoring (60s)" button
+
+# Via Command Line
+python demo/chaos_test.py
+```
+
+**Testing Tip:** While monitoring is running, manually interfere with the system:
+```bash
+# Stop a storage node
+docker stop vstack-storage-node-1
+
+# Wait for detection...
+
+# Restart it
+docker start vstack-storage-node-1
+```
+
+### 4. Performance Monitoring Dashboard
+
 **File:** `../client/dashboard.html`, `../client/dashboard_server.py`
 
 Real-time web dashboard showing:
@@ -25,8 +186,10 @@ python client/run_with_dashboard.py <video_id>
 # Open http://localhost:8888 in browser
 ```
 
-### 2. Network Emulator
+### 5. Network Emulator
 **File:** `network_emulator.py`
+
+**Type:** 🎮 Simulation
 
 Simulates various network conditions:
 - Normal operation
@@ -46,8 +209,10 @@ scenario = DemoScenario(emulator, node_urls)
 await scenario.run_full_demo()
 ```
 
-### 3. Smart vs Naive Comparison
+### 6. Smart vs Naive Comparison
 **File:** `smart_vs_naive_demo.py`
+
+**Type:** 🎮 Simulation
 
 Side-by-side comparison demonstrating:
 - Startup latency differences
@@ -66,6 +231,7 @@ python demo/smart_vs_naive_demo.py
 - 70% fewer rebuffering events
 - 30% higher throughput
 - 20% better buffer health
+
 
 ### 4. Consensus Visualization
 **Files:** `consensus_visualization.html`, `consensus_demo.py`

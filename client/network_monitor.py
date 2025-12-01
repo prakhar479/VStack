@@ -43,6 +43,17 @@ class NetworkMonitor:
         self.node_urls = []
         self.monitor_task = None
         self.session = None
+        self.emulator = None
+        
+    def set_emulator(self, emulator):
+        """
+        Set network emulator for simulation.
+        
+        Args:
+            emulator: NetworkEmulator instance
+        """
+        self.emulator = emulator
+        logger.info("Network emulator attached to monitor")
         
     async def start_monitoring(self, node_urls: List[str], session: aiohttp.ClientSession):
         """
@@ -109,6 +120,14 @@ class NetworkMonitor:
         start_time = time.time()
         
         try:
+            # Apply emulation if active
+            if self.emulator:
+                if self.emulator.should_fail(node_url):
+                    raise Exception("Simulated node failure")
+                if self.emulator.should_drop_packet(node_url):
+                    raise asyncio.TimeoutError("Simulated packet loss")
+                await self.emulator.apply_network_delay(node_url)
+        
             # Use shared session if available
             if not self.session:
                 logger.warning("No session available for ping")
